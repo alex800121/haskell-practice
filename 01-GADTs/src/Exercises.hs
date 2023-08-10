@@ -17,21 +17,24 @@ instance Countable Bool where count x = if x then 1 else 0
 -- things.
 
 data CountableList where
-  -- ...
+  CountableNil :: CountableList
+  CountableCons :: Countable a => a -> CountableList -> CountableList
 
 
 -- | b. Write a function that takes the sum of all members of a 'CountableList'
 -- once they have been 'count'ed.
 
 countList :: CountableList -> Int
-countList = error "Implement me!"
+countList = f 0
+  where
+    f n CountableNil = n
+    f n (CountableCons x xs) = f (n + count n) xs
 
 
 -- | c. Write a function that removes all elements whose count is 0.
 
 dropZero :: CountableList -> CountableList
 dropZero = error "Implement me!"
-
 
 -- | d. Can we write a function that removes all the things in the list of type
 -- 'Int'? If not, why not?
