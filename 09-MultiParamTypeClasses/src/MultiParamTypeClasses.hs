@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeOperators #-}
 
 {- Our -} module {- du jour is strangely-abbreviated and weirdly-capitalised:
 the -} MultiParamTypeClasses {- extension opens a lot of doors for us that

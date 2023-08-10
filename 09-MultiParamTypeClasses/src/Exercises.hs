@@ -10,12 +10,13 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Exercises where
 
 import Data.Kind (Constraint, Type)
 import Data.Map (Map)
 import Data.Proxy (Proxy (..))
-
+import GHC.TypeLits (TypeError, ErrorMessage(..))
 
 
 
@@ -34,14 +35,28 @@ newtype YourInt = YourInt Int
 
 -- | a. Write the class!
 
--- class Newtype ... ... where
---   wrap   :: ...
---   unwrap :: ...
+class Newtype new where
+  type Old new
+  wrap   :: Old new -> new
+  unwrap :: new -> Old new
 
 -- | b. Write instances for 'MyInt' and 'YourInt'.
 
+instance Newtype MyInt where
+  type Old MyInt = Int
+  wrap = MyInt
+  unwrap (MyInt i) = i
+
+instance Newtype YourInt where
+  type Old YourInt = Int
+  wrap = YourInt
+  unwrap (YourInt i) = i
+
 -- | c. Write a function that adds together two values of the same type,
 -- providing that the type is a newtype around some type with a 'Num' instance.
+
+add :: (Num (Old new), Newtype new) => new -> new -> new
+add x y = wrap (unwrap x + unwrap y)
 
 -- | d. We actually don't need @MultiParamTypeClasses@ for this if we use
 -- @TypeFamilies@. Look at the section on associated type instances here:
@@ -81,14 +96,33 @@ instance Traversable Identity where
 -- | a. Write that little dazzler! What error do we get from GHC? What
 -- extension does it suggest to fix this?
 
--- class Wanderable … … where
---   wander :: … => (a -> f b) -> t a -> f (t b)
+class Wanderable t where
+  type CustomConstraint t :: (Type -> Type) -> Constraint
+  wander :: (CustomConstraint t) f => (a -> f b) -> t a -> f (t b)
 
 -- | b. Write a 'Wanderable' instance for 'Identity'.
 
+instance Wanderable Identity where
+  type CustomConstraint Identity = Functor
+  wander f (Identity a) = Identity <$> f a
+  
 -- | c. Write 'Wanderable' instances for 'Maybe', '[]', and 'Proxy', noting the
 -- differing constraints required on the @f@ type. '[]' might not work so well,
 -- and we'll look at /why/ in the next part of this question!
+
+instance Wanderable Maybe where
+  type CustomConstraint Maybe = Applicative
+  wander _ Nothing = pure Nothing
+  wander f (Just x) = Just <$> f x
+
+instance Wanderable [] where
+  type CustomConstraint [] = Applicative
+  wander _ [] = pure []
+  wander f (x : xs) = (:) <$> f x <*> wander f xs
+
+instance Wanderable Proxy where
+  type CustomConstraint Proxy = Applicative
+  wander _ Proxy = pure Proxy
 
 -- | d. Assuming you turned on the extension suggested by GHC, why does the
 -- following produce an error? Using only the extensions we've seen so far, how
@@ -97,9 +131,7 @@ instance Traversable Identity where
 -- we'll see in later chapters that there are neater solutions to this
 -- problem!)
 
--- test = wander Just [1, 2, 3]
-
-
+test = wander Just [1, 2, 3]
 
 
 
@@ -124,16 +156,25 @@ data Fin (limit :: Nat) where
 
 class (x :: Nat) < (y :: Nat) where
   convert :: SNat x -> Fin y
+  invert :: Fin y -> Maybe (SNat x)
 
 -- | a. Write the instance that says @Z@ is smaller than @S n@ for /any/ @n@.
+
+instance Z < S n where
+  convert SZ = FZ
+  invert FZ = Just SZ
+  invert _ = Nothing
 
 -- | b. Write an instance that says, if @x@ is smaller than @y@, then @S x@ is
 -- smaller than @S y@.
 
+instance x < y => S x < S y where
+  convert (SS x) = FS (convert x)
+  invert FZ = Nothing
+  invert (FS x) = SS <$> invert x
+
 -- | c. Write the inverse function for the class definition and its two
 -- instances.
-
-
 
 
 
@@ -145,7 +186,15 @@ class (x :: Nat) < (y :: Nat) where
 
 -- | a. Write that typeclass!
 
+class a ~ b where
+  to :: a -> b
+  from :: b -> a
+
 -- | b. Write that instance!
+
+instance a Exercises.~ a where
+  to = Prelude.id
+  from = Prelude.id
 
 -- | c. When GHC sees @x ~ y@, it can apply anything it knows about @x@ to @y@,
 -- and vice versa. We don't have the same luxury with /our/ class, however –
@@ -160,13 +209,13 @@ class (x :: Nat) < (y :: Nat) where
 
 
 
-
-
 {- FIVE -}
 
 -- | It wouldn't be a proper chapter without an @HList@, would it?
 
 data HList (xs :: [Type]) where
+  HNil :: HList '[]
+  HCons :: x -> HList xs -> HList (x ': xs)
   -- In fact, you know what? You can definitely write an HList by now – I'll
   -- just put my feet up and wait here until you're done!
 
@@ -178,12 +227,19 @@ class HTake (n :: Nat) (xs :: [Type]) (ys :: [Type]) where
 
 -- | a. Write an instance for taking 0 elements.
 
+instance HTake Z xs '[] where
+  htake _ _ = HNil
+
 -- | b. Write an instance for taking a non-zero number. You "may" need a
 -- constraint on this instance.
 
+instance HTake n xs ys => HTake (S n) (x ': xs) (x ': ys) where
+  htake (SS n) (HCons x xs) = HCons x (htake n xs)
+
 -- | c. What case have we forgotten? How might we handle it?
 
-
+instance HTake n '[] '[] where
+  htake _ _ = HNil
 
 
 
@@ -196,7 +252,13 @@ class Pluck (x :: Type) (xs :: [Type]) where
 
 -- | a. Write an instance for when the head of @xs@ is equal to @x@.
 
+instance {-# OVERLAPPING #-} Pluck x (x ': xs) where
+  pluck (HCons x _) = x
+
 -- | b. Write an instance for when the head /isn't/ equal to @x@.
+
+instance Pluck x xs => Pluck x (y ': xs) where
+  pluck (HCons _ xs) = pluck xs
 
 -- | c. Using [the documentation for user-defined type
 -- errors](http://hackage.haskell.org/package/base-4.11.1.0/docs/GHC-TypeLits.html#g:4)
@@ -204,11 +266,14 @@ class Pluck (x :: Type) (xs :: [Type]) where
 -- through the entire @xs@ list (or started with an empty @HList@) and haven't
 -- found the type you're trying to find.
 
+instance TypeError (Text "The given type \"" :<>: ShowType x :<>: Text "\" is not in the given list.") => Pluck x '[] where
+  pluck _ = error "unreachable"
+
 -- | d. Making any changes required for your particular HList syntax, why
 -- doesn't the following work? Hint: try running @:t 3@ in GHCi.
 
--- mystery :: Int
--- mystery = pluck (HCons 3 HNil)
+mystery :: Int
+mystery = pluck (HCons (3 :: Int) HNil)
 
 
 
@@ -220,23 +285,32 @@ class Pluck (x :: Type) (xs :: [Type]) where
 -- number of parameters. Typically, we define it with two parameters: @Here@
 -- and @There@. These tell us which "position" our value inhabits:
 
--- variants :: [Variant '[Bool, Int, String]]
+variants :: [Variant '[Bool, Int, String]]
 -- variants = [ Here True, There (Here 3), There (There (Here "hello")) ]
+variants = [ inject True, inject (3 :: Int), inject "hello" ]
 
 -- | a. Write the 'Variant' type to make the above example compile.
 
 data Variant (xs :: [Type]) where
-  -- Here  :: ...
-  -- There :: ...
+  Here  :: x -> Variant (x ': xs)
+  There :: Variant xs -> Variant (x ': xs)
 
 -- | b. The example is /fine/, but there's a lot of 'Here'/'There' boilerplate.
 -- Wouldn't it be nice if we had a function that takes a type, and then returns
 -- you the value in the right position? Write it! If it works, the following
 -- should compile: @[inject True, inject (3 :: Int), inject "hello"]@.
 
--- class Inject … … where
---   inject :: …
+class Inject x xs where
+  inject :: x -> Variant xs
 
+instance {-# OVERLAPPING #-} Inject x (x ': xs) where
+  inject = Here
+
+instance Inject x xs => Inject x (y ': xs) where
+  inject x = There (inject x)
+
+instance TypeError (Text "The given type \"" :<>: ShowType x :<>: Text "\" is not in the given Variant") => Inject x '[] where
+  inject _ = error "unreachable"
 -- | c. Why did we have to annotate the 3? This is getting frustrating... do
 -- you have any (not necessarily good) ideas on how we /could/ solve it?
 
@@ -276,7 +350,7 @@ class Coat (a :: Weather) (b :: Temperature) where
 -- that /everyone/ knows, so they should be safe enough!
 
 -- No one needs a coat when it's sunny!
-instance Coat Sunny b where doINeedACoat _ _ = False
+instance {-# INCOHERENT #-} Coat Sunny b where doINeedACoat _ _ = False
 
 -- It's freezing out there - put a coat on!
 instance Coat a Cold where doINeedACoat _ _ = True
@@ -284,8 +358,8 @@ instance Coat a Cold where doINeedACoat _ _ = True
 -- | Several months pass, and your app is used by billions of people around the
 -- world. All of a sudden, your engineers encounter a strange error:
 
--- test :: Bool
--- test = doINeedACoat SSunny SCold
+test1 :: Bool
+test1 = doINeedACoat SSunny SCold
 
 -- | Clearly, our data scientists never thought of a day that could
 -- simultaneously be sunny /and/ cold. After months of board meetings, a
