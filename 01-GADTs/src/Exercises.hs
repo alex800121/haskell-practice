@@ -1,5 +1,9 @@
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Exercises where
+import Data.Kind (Type)
 
 
 
@@ -25,16 +29,19 @@ data CountableList where
 -- once they have been 'count'ed.
 
 countList :: CountableList -> Int
-countList = f 0
+countList = go 0
   where
-    f n CountableNil = n
-    f n (CountableCons x xs) = f (n + count n) xs
+    go n CountableNil = n
+    go n (CountableCons x xs) = go (n + count n) xs
 
 
 -- | c. Write a function that removes all elements whose count is 0.
 
 dropZero :: CountableList -> CountableList
-dropZero = error "Implement me!"
+dropZero = go id
+  where
+    go f CountableNil = f CountableNil
+    go f (CountableCons x xs) = go (f . CountableCons x) xs
 
 -- | d. Can we write a function that removes all the things in the list of type
 -- 'Int'? If not, why not?
@@ -51,28 +58,40 @@ filterInts = error "Contemplate me!"
 -- | a. Write a list that can take /any/ type, without any constraints.
 
 data AnyList where
-  -- ...
+  AnyNil :: AnyList
+  AnyCons :: a -> AnyList -> AnyList
 
 -- | b. How many of the following functions can we implement for an 'AnyList'?
 
 reverseAnyList :: AnyList -> AnyList
-reverseAnyList = undefined
+reverseAnyList = go AnyNil
+  where
+    go l AnyNil = l
+    go l (AnyCons x xs) = go (AnyCons x l) xs
 
 filterAnyList :: (a -> Bool) -> AnyList -> AnyList
 filterAnyList = undefined
 
 lengthAnyList :: AnyList -> Int
-lengthAnyList = undefined
+lengthAnyList = go 0
+  where
+    go n AnyNil = n
+    go n (AnyCons _ xs) = go (n + 1) xs
 
 foldAnyList :: Monoid m => AnyList -> m
 foldAnyList = undefined
 
 isEmptyAnyList :: AnyList -> Bool
-isEmptyAnyList = undefined
+isEmptyAnyList AnyNil = True
+isEmptyAnyList _ = False
 
 instance Show AnyList where
-  show = error "What about me?"
-
+  show xs = case xs of
+    AnyNil -> "[]"
+    AnyCons x xs -> "[Any" ++ show' xs ++ "]"
+      where
+        show' AnyNil = ""
+        show' (AnyCons _ ys) = ", Any" ++ show' ys
 
 
 
@@ -97,14 +116,20 @@ transformable2 = TransformWith (uncurry (++)) ("Hello,", " world!")
 
 -- | a. Which type variable is existential inside 'TransformableTo'? What is
 -- the only thing we can do to it?
+--
+-- input
 
 -- | b. Could we write an 'Eq' instance for 'TransformableTo'? What would we be
 -- able to check?
 
+instance Eq output => Eq (TransformableTo output) where
+  TransformWith f1 x1 == TransformWith f2 x2 = f1 x1 == f2 x2
+
 -- | c. Could we write a 'Functor' instance for 'TransformableTo'? If so, write
 -- it. If not, why not?
 
-
+instance Functor TransformableTo where
+  fmap f (TransformWith g x) = TransformWith (f . g) x
 
 
 
@@ -118,15 +143,19 @@ data EqPair where
 -- | a. There's one (maybe two) useful function to write for 'EqPair'; what is
 -- it?
 
+isEqual :: EqPair -> Bool
+isEqual (EqPair a b) = a == b
+
 -- | b. How could we change the type so that @a@ is not existential? (Don't
 -- overthink it!)
+
+data EqPair1 a where
+  EqPair1 :: Eq a => a -> a -> EqPair1 a
 
 -- | c. If we made the change that was suggested in (b), would we still need a
 -- GADT? Or could we now represent our type as an ADT?
 
-
-
-
+data EqPair2 a = Eq a => EqPair2 a a
 
 {- FIVE -}
 
@@ -151,20 +180,30 @@ getInt (IntBox int _) = int
 -- pattern-match:
 
 getInt' :: MysteryBox String -> Int
-getInt' _doSomeCleverPatternMatching = error "Return that value"
+getInt' (StringBox _ x) = getInt x
 
 -- | b. Write the following function. Again, don't overthink it!
 
 countLayers :: MysteryBox a -> Int
-countLayers = error "Implement me"
+countLayers EmptyBox = 0
+countLayers (IntBox _ x) = 1 + countLayers x
+countLayers (StringBox _ x) = 1 + countLayers x
+countLayers (BoolBox _ x) = 1 + countLayers x
 
 -- | c. Try to implement a function that removes one layer of "Box". For
 -- example, this should turn a BoolBox into a StringBox, and so on. What gets
 -- in our way? What would its type be?
 
+type family Inner (a :: Type) :: Type where
+  Inner Int = ()
+  Inner String = Int
+  Inner Bool = String
 
-
-
+removeLayer :: MysteryBox a -> Maybe (MysteryBox (Inner a))
+removeLayer EmptyBox = Nothing
+removeLayer (IntBox _ x) = Just x
+removeLayer (StringBox _ x) = Just x
+removeLayer (BoolBox _ x) = Just x
 
 {- SIX -}
 
@@ -183,6 +222,9 @@ exampleHList = HCons "Tom" (HCons 25 (HCons True HNil))
 -- need to pattern-match on HNil, and therefore the return type shouldn't be
 -- wrapped in a 'Maybe'!
 
+head :: HList (x, xs) -> x
+head (HCons x _) = x
+
 -- | b. Currently, the tuples are nested. Can you pattern-match on something of
 -- type @HList (Int, String, Bool, ())@? Which constructor would work?
 
@@ -192,9 +234,13 @@ patternMatchMe = undefined
 -- | c. Can you write a function that appends one 'HList' to the end of
 -- another? What problems do you run into?
 
+type family Append (xs :: Type) (ys :: Type) :: Type where
+  Append () ys = ys
+  Append (x, xs) ys = (x, Append xs ys)
 
-
-
+append :: HList xs -> HList ys -> HList (Append xs ys)
+append HNil ys = ys
+append (HCons x xs) ys = HCons x (append xs ys)
 
 {- SEVEN -}
 
@@ -207,11 +253,15 @@ data Branch left centre right
 -- /tree/. None of the variables should be existential.
 
 data HTree a where
-  -- ...
+  HTreeNil :: HTree Empty
+  HTreeCons :: HTree left -> centre -> HTree right -> HTree (Branch left centre right)
 
 -- | b. Implement a function that deletes the left subtree. The type should be
 -- strong enough that GHC will do most of the work for you. Once you have it,
 -- try breaking the implementation - does it type-check? If not, why not?
+
+pruneLeft :: HTree (Branch left centre right) -> HTree (Branch Empty centre right)
+pruneLeft (HTreeCons _ centre right) = HTreeCons HTreeNil centre right
 
 -- | c. Implement 'Eq' for 'HTree's. Note that you might have to write more
 -- than one to cover all possible HTrees. You might also need an extension or
@@ -219,7 +269,11 @@ data HTree a where
 -- Recursion is your friend here - you shouldn't need to add a constraint to
 -- the GADT!
 
+instance (Eq (HTree left), Eq centre, Eq (HTree right)) => Eq (HTree (Branch left centre right)) where
+  HTreeCons l1 c1 r1 == HTreeCons l2 c2 r2 = l1 == l2 && c1 == c2 && r1 == r2
 
+instance Eq (HTree Empty) where
+  _ == _ = True
 
 
 
@@ -234,23 +288,27 @@ data HTree a where
 -- @
 
 data AlternatingList a b where
-  -- ...
+  AlternatingNil :: AlternatingList a b
+  AlternatingCons :: a -> AlternatingList b a -> AlternatingList a b
 
 -- | b. Implement the following functions.
 
 getFirsts :: AlternatingList a b -> [a]
-getFirsts = error "Implement me!"
+getFirsts AlternatingNil = []
+getFirsts (AlternatingCons x xs) = x : getSeconds xs
 
 getSeconds :: AlternatingList a b -> [b]
-getSeconds = error "Implement me, too!"
+getSeconds AlternatingNil = []
+getSeconds (AlternatingCons _ xs) = getFirsts xs
 
 -- | c. One more for luck: write this one using the above two functions, and
 -- then write it such that it only does a single pass over the list.
 
 foldValues :: (Monoid a, Monoid b) => AlternatingList a b -> (a, b)
-foldValues = error "Implement me, three!"
-
-
+foldValues AlternatingNil = (mempty, mempty)
+foldValues (AlternatingCons x xs) = (x <> a, b)
+  where
+    (b, a) = foldValues xs
 
 
 
@@ -270,7 +328,11 @@ data Expr a where
 -- | a. Implement the following function and marvel at the typechecker:
 
 eval :: Expr a -> a
-eval = error "Implement me"
+eval (IntValue i) = i
+eval (BoolValue b) = b
+eval (If c x y) = if eval c then eval x else eval y
+eval (Add x y) = eval x + eval y
+eval (Equals x y) = eval x == eval y
 
 -- | b. Here's an "untyped" expression language. Implement a parser from this
 -- into our well-typed language. Note that (until we cover higher-rank
@@ -284,12 +346,22 @@ data DirtyExpr
   | DirtyBoolValue Bool
 
 parse :: DirtyExpr -> Maybe (Expr Int)
-parse = error "Implement me"
+parse (DirtyIntValue i) = Just (IntValue i)
+parse (DirtyBoolValue _) = Nothing
+parse (DirtyIf c x y) = parseBool c >>= \c -> parse x >>= \x -> parse y >>= \y -> return (If c x y)
+parse (DirtyAdd x y) = parse x >>= \x -> parse y >>= \y -> return (Add x y)
+parse (DirtyEquals _ _) = Nothing
+
+parseBool :: DirtyExpr -> Maybe (Expr Bool)
+parseBool (DirtyIntValue i) = Nothing
+parseBool (DirtyBoolValue b) = Just (BoolValue b)
+parseBool (DirtyIf c x y) = parseBool c >>= \c -> parseBool x >>= \x -> parseBool y >>= \y -> return (If c x y)
+parseBool (DirtyAdd _ _) = Nothing
+parseBool (DirtyEquals x y) = parse x >>= \x -> parse y >>= \y -> return (Equals x y)
 
 -- | c. Can we add functions to our 'Expr' language? If not, why not? What
 -- other constructs would we need to add? Could we still avoid 'Maybe' in the
 -- 'eval' function?
-
 
 
 
@@ -305,7 +377,8 @@ parse = error "Implement me"
 -- long as the input of one lines up with the output of the next.
 
 data TypeAlignedList a b where
-  -- ...
+  TypeAlignedNil :: TypeAlignedList a a
+  TypeAlignedCons :: (a -> b) -> TypeAlignedList b c -> TypeAlignedList a c
 
 -- | b. Which types are existential?
 
@@ -313,5 +386,5 @@ data TypeAlignedList a b where
 -- not as difficult as you'd initially think.
 
 composeTALs :: TypeAlignedList b c -> TypeAlignedList a b -> TypeAlignedList a c
-composeTALs = error "Implement me, and then celebrate!"
-
+composeTALs bc TypeAlignedNil = bc
+composeTALs bc (TypeAlignedCons x xs) = TypeAlignedCons x (composeTALs bc xs)

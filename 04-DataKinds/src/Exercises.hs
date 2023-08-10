@@ -1,9 +1,12 @@
 {-# LANGUAGE DataKinds      #-}
 {-# LANGUAGE GADTs          #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeFamilies #-}
 module Exercises where
 
-import Data.Kind (Type)
+import Data.Kind (Type, Constraint)
 import Data.Function ((&))
 
 
@@ -20,8 +23,19 @@ data IntegerMonoid = Sum | Product
 
 -- | a. Write a newtype around 'Integer' that lets us choose which instance we
 -- want.
+newtype MonoidInt (a :: IntegerMonoid) = M Int
 
 -- | b. Write the two monoid instances for 'Integer'.
+
+instance Semigroup (MonoidInt Sum) where
+  M a <> M b = M (a + b)
+instance Monoid (MonoidInt Sum) where
+  mempty = M 0
+
+instance Semigroup (MonoidInt Product) where
+  M a <> M b = M (a * b)
+instance Monoid (MonoidInt Product) where
+  mempty = M 1
 
 -- | c. Why do we need @FlexibleInstances@ to do this?
 
@@ -56,16 +70,30 @@ data Void -- No constructors!
 
 data Nat = Z | S Nat
 
-data StringAndIntList (stringCount :: Nat) where
-  -- ...
+data StringAndIntList (stringCount :: Nat) (intCount :: Nat) where
+  SINil :: StringAndIntList Z Z
+  SCons :: String -> StringAndIntList n m -> StringAndIntList (S n) m
+  ICons :: Int -> StringAndIntList n m -> StringAndIntList n (S m)
 
 -- | b. Update it to keep track of the count of strings /and/ integers.
 
 -- | c. What would be the type of the 'head' function?
 
+type family (a :: Bool) || (b :: Bool) :: Bool where
+  True || _ = True
+  False || b = b
 
+type family (a :: Bool) && (b :: Bool) :: Bool where
+  False && _ = False
+  True && b = b
 
+type family IsZero (n :: Nat) :: Bool where
+  IsZero Z = True
+  IsZero _ = False
 
+head :: (IsZero n && IsZero m) ~ False => StringAndIntList n m -> Either String Int
+head (SCons x _) = Left x
+head (ICons x _) = Right x
 
 {- FOUR -}
 
@@ -79,19 +107,22 @@ data Showable where
 -- stores this fact in the type-level.
 
 data MaybeShowable (isShowable :: Bool) where
-  -- ...
+  IsShowable :: Show a => a -> MaybeShowable 'True
+  IsNotShowable :: a -> MaybeShowable 'False
 
 -- | b. Write a 'Show' instance for 'MaybeShowable'. Your instance should not
 -- work unless the type is actually 'show'able.
+
+instance Show (MaybeShowable 'True) where
+  show (IsShowable x) = show x
 
 -- | c. What if we wanted to generalise this to @Constrainable@, such that it
 -- would work for any user-supplied constraint of kind 'Constraint'? How would
 -- the type change? What would the constructor look like? Try to build this
 -- type - GHC should tell you exactly which extension you're missing.
 
-
-
-
+data Constrainable (c :: Type -> Constraint) where
+  Constrainable :: c a => a -> Constrainable c
 
 {- FIVE -}
 
@@ -105,18 +136,28 @@ data List a = Nil | Cons a (List a)
 -- having a list of types!
 
 data HList (types :: List Type) where
-  -- HNil  :: ...
-  -- HCons :: ...
+  HNil :: HList Nil
+  HCons :: x -> HList xs -> HList (Cons x xs)
 
 -- | b. Write a well-typed, 'Maybe'-less implementation for the 'tail' function
 -- on 'HList'.
 
+tail :: HList (Cons x xs) -> HList xs
+tail (HCons _ xs) = xs
+
 -- | c. Could we write the 'take' function? What would its type be? What would
 -- get in our way?
 
+type family Take (n :: Nat) (types :: List Type) :: List Type where
+  Take Z _ = Nil
+  Take _ Nil = Nil
+  Take (S n) (Cons x xs) = Cons x (Take n xs)
 
 
-
+take :: SNat n -> HList xs -> HList (Take n xs)
+take SZ _ = HNil
+take _ HNil = HNil
+take (SS n) (HCons x xs) = HCons x (Exercises.take n xs)
 
 {- SIX -}
 
@@ -134,18 +175,31 @@ data BlogAction
 -- Remember that, by switching on @DataKinds@, we have access to a promoted
 -- version of 'Bool'!
 
+data BlogAction' (needAdmin :: Bool) where
+  AddBlog' :: BlogAction' 'False
+  DeleteBlog' :: BlogAction' 'True
+  AddComment' :: BlogAction' 'False
+  DeleteComment' :: BlogAction' 'True
+
 -- | b. Write a 'BlogAction' list type that requires all its members to be
 -- the same "access level": "admin" or "non-admin".
 
--- data BlogActionList (isSafe :: ???) where
---   ...
+data BlogActionList (isSafe :: Bool) where
+  BANil :: BlogActionList a
+  BACons :: BlogAction' a -> BlogActionList a -> BlogActionList a
 
 -- | c. Let's imagine that our requirements change, and 'DeleteComment' is now
 -- available to a third role: moderators. Could we use 'DataKinds' to introduce
 -- the three roles at the type-level, and modify our type to keep track of
 -- this?
 
+data Role = Admin | Moderator | User
 
+data BlogActionPlus (r :: [Role]) where
+  AddBlogPlus :: BlogActionPlus '[Admin, Moderator, User]
+  DeleteBlogPlus :: BlogActionPlus '[Admin]
+  AddCommentPlus :: BlogActionPlus '[Admin, Moderator, User]
+  DeleteCommentPlus :: BlogActionPlus '[Admin, Moderator]
 
 
 
@@ -165,13 +219,15 @@ data SBool (value :: Bool) where
 
 -- | a. Write a singleton type for natural numbers:
 
-data SNat (value :: Nat) where
-  -- ...
+data SNat (n :: Nat) where
+  SZ :: SNat Z
+  SS :: SNat n -> SNat (S n)
 
 -- | b. Write a function that extracts a vector's length at the type level:
 
 length :: Vector n a -> SNat n
-length = error "Implement me!"
+length VNil = SZ
+length (VCons _ xs) = SS (Exercises.length xs)
 
 -- | c. Is 'Proxy' a singleton type?
 
@@ -187,20 +243,28 @@ data Proxy a = Proxy
 -- and write to a file. To do this, we might write a data type to express our
 -- intentions:
 
-data Program                     result
-  = OpenFile            (Program result)
-  | WriteFile  String   (Program result)
-  | ReadFile  (String -> Program result)
-  | CloseFile (          Program result)
-  | Exit                         result
+-- data Program                     result
+--   = OpenFile            (Program result)
+--   | WriteFile  String   (Program result)
+--   | ReadFile  (String -> Program result)
+--   | CloseFile (          Program result)
+--   | Exit                         result
+
+data Program (openFile :: Bool) result where
+  OpenFile :: Program 'True result -> Program 'False result
+  WriteFile :: String -> Program 'True result -> Program 'True result
+  ReadFile :: (String -> Program 'True result) -> Program 'True result
+  CloseFile :: Program 'False result -> Program 'True result
+  Exit :: result -> Program 'False result
 
 -- | We could then write a program like this to use our language:
 
-myApp :: Program Bool
+myApp :: Program 'False Bool
 myApp
-  = OpenFile $ WriteFile "HEY" $ (ReadFile $ \contents ->
+  = OpenFile $ WriteFile "HEY" $ ReadFile (\contents ->
       if contents == "WHAT"
-        then WriteFile "... bug?" $ Exit False
+        -- then WriteFile "... bug?" $ Exit False
+        then WriteFile "... bug?" $ CloseFile $ Exit False
         else CloseFile            $ Exit True)
 
 -- | ... but wait, there's a bug! If the contents of the file equal "WHAT", we
@@ -226,10 +290,12 @@ myApp
 -- | EXTRA: write an interpreter for this program. Nothing to do with data
 -- kinds, but a nice little problem.
 
-interpret :: Program {- ??? -} a -> IO a
-interpret = error "Implement me?"
-
-
+interpret :: Program b a -> IO a
+interpret (Exit r) = putStrLn "Exiting" >> return r
+interpret (CloseFile f) = putStrLn "Closing file..." >> interpret f
+interpret (ReadFile f) = putStr "Input: " >> getLine >>= \s -> interpret (f s)
+interpret (WriteFile s f) = putStrLn ("Writing \"" ++ s ++ "\" to file") >> interpret f
+interpret (OpenFile f) = putStrLn "Opening file..." >> interpret f
 
 
 
@@ -249,11 +315,17 @@ data Vector (n :: Nat) (a :: Type) where
 -- into Z and S cases. That's all the hint you need :)
 
 data SmallerThan (limit :: Nat) where
-  -- ...
+  SmallerThanZ :: SmallerThan (S n)
+  SmallerThanS :: SmallerThan n -> SmallerThan (S n)
 
 -- | b. Write the '(!!)' function:
 
 (!!) :: Vector n a -> SmallerThan n -> a
-(!!) = error "Implement me!"
+VCons x _ !! SmallerThanZ = x
+VCons _ xs !! (SmallerThanS n) = xs Exercises.!! n
 
 -- | c. Write a function that converts a @SmallerThan n@ into a 'Nat'.
+
+convert :: SmallerThan n -> Nat
+convert SmallerThanZ = Z
+convert (SmallerThanS n) = S (convert n)
