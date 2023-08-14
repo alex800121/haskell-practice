@@ -8,12 +8,14 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE StandaloneDeriving #-}
 module Exercises where
 
-import Data.Kind (Type)
-import GHC.TypeLits (Symbol)
+import Data.Kind (Type, Constraint)
+import GHC.TypeLits (Symbol, TypeError, ErrorMessage(..))
 import GHC.Generics (Generic (..))
 import qualified GHC.Generics as G
+import Data.Void (Void)
 
 
 
@@ -23,7 +25,7 @@ import qualified GHC.Generics as G
 
 -- | Recall an old friend, the 'Newtype' class:
 
-class Newtype (new :: Type) (old :: Type) where
+class Newtype (new :: Type) (old :: Type) | new -> old where
   wrap   :: old -> new
   unwrap :: new -> old
 
@@ -40,9 +42,9 @@ class Newtype (new :: Type) (old :: Type) where
 -- | Let's go back to a problem we had in the last exercise, and imagine a very
 -- simple cache in IO. Uncomment the following:
 
--- class CanCache (entity :: Type) (index :: Type) where
---   store :: entity -> IO ()
---   load  :: index -> IO (Maybe entity)
+class CanCache (entity :: Type) (index :: Type) (m :: Type -> Type) | entity -> index where
+  store :: entity -> m ()
+  load  :: index -> m (Maybe entity)
 
 -- | a. Uh oh - there's already a problem! Any @entity@ type should have a
 -- fixed type of id/@index@, though... if only we could convince GHC... Could
@@ -67,7 +69,9 @@ data Nat = Z | S Nat
 -- two type-level naturals together. If we do a side-by-side comparison of the
 -- equivalent "class-based" approach:
 
-class       Add  (x :: Nat) (y :: Nat) (z :: Nat) | x y -> z
+class       Add  (x :: Nat) (y :: Nat) (z :: Nat) | x y -> z where
+  append :: Vec x a -> Vec y a -> Vec z a
+
 type family Add' (x :: Nat) (y :: Nat)    :: Nat
 
 -- | We see here that there are parallels between classes and type families.
@@ -80,6 +84,33 @@ type family Add' (x :: Nat) (y :: Nat)    :: Nat
 -- pattern-matching on the first argument. Remember that instances can have
 -- constraints, and this is how we do recursion!
 
+instance Add 'Z y y where
+  append VNil ys = ys
+
+instance Add x y z => Add ('S x) y ('S z) where
+  append (VCons x xs) ys = VCons x (append xs ys)
+
+class Add'' (x :: Nat) (y :: Nat) where
+  type AddResult x y :: Nat
+  append' :: Vec x a -> Vec y a -> Vec (AddResult x y) a
+
+instance Add'' 'Z y where
+  type AddResult 'Z y = y
+  append' VNil ys = ys
+
+instance Add'' x y => Add'' ('S x) y where
+  type AddResult ('S x) y = 'S (AddResult x y)
+  append' (VCons x xs) ys = VCons x (append' xs ys)
+
+data Vec (n :: Nat) (a :: k) where
+  VNil :: Vec 'Z a
+  VCons :: a -> Vec n a -> Vec ('S n) a
+
+type family All (c :: k -> Constraint) (xs :: [k]) :: Constraint where
+  All _ '[] = ()
+  All c (x ': xs) = (c x, All c xs)
+
+deriving instance Show a => Show (Vec n a)
 -- | b. By our analogy, a type family has only "one functional dependency" -
 -- all its inputs to its one output. Can we write _more_ functional
 -- dependencies for @Add@? Aside from @x y -> z@? 
@@ -100,7 +131,7 @@ data Proxy (a :: k) = Proxy
 -- because the names of types are far too confusing. To that end, we can give
 -- our types friendlier names to make the coding experience less intimidating:
 
-class (x :: k) `IsNamed` (label :: Symbol) where
+class (x :: k) `IsNamed` (label :: Symbol) | x -> label, label -> x where
   fromName :: Proxy x     -> Proxy label
   fromName _ = Proxy
 
@@ -119,6 +150,9 @@ instance Float `IsNamed` "Kenneth"
 
 -- | b. Write the identity function restricted to types named "Kenneth".
 
+idKenneth :: a `IsNamed` "Kenneth" => a -> a
+idKenneth = id
+
 -- | c. Can you think of a less-contrived reason why labelling certain types
 -- might be useful in real-world code?
 
@@ -129,10 +163,10 @@ instance Float `IsNamed` "Kenneth"
 {- FIVE -}
 
 -- | Here's a fun little class:
-class Omnipresent (r :: Symbol)
+class Omnipresent (r :: Symbol) (s :: Nat) | -> r s
 
 -- | Here's a fun little instance:
-instance Omnipresent "Tom!"
+instance Omnipresent "Tom!" 'Z
 
 -- | a. Is there a way to enforce that no other instance of this class can ever
 -- exist? Do we /need/ variables on the left-hand side of a functional
@@ -163,6 +197,22 @@ data SNat (n :: Nat) where
 -- | a. Write a function (probably in a class) that takes an 'SNat' and an
 -- 'HList', and returns the value at the 'SNat''s index within the 'HList'.
 
+class Index (n :: Nat) (xs :: [Type]) where
+  type At n xs :: Type
+  index :: SNat n -> HList xs -> At n xs
+
+instance Index 'Z (x ': xs) where
+  type At 'Z (x ': xs) = x
+  index _ (HCons x _) = x
+
+instance Index n xs =>  Index ('S n) (y ': xs) where
+  type At ('S n) (y ': xs) = At n xs
+  index (SS n) (HCons _ ys) = index n ys
+
+instance TypeError (Text "Out of index") => Index n '[] where
+  type At n '[] = Void
+  index = error "unreachable"
+
 -- | b. Add the appropriate functional dependency.
 
 -- | c. Write a custom type error!
@@ -177,6 +227,8 @@ data SNat (n :: Nat) where
 
 -- | Recall our variant type:
 
+deriving instance All Show xs => Show (Variant xs)
+
 data Variant (xs :: [Type]) where
   Here  ::         x  -> Variant (x ': xs)
   There :: Variant xs -> Variant (y ': xs)
@@ -184,13 +236,15 @@ data Variant (xs :: [Type]) where
 -- | We previously wrote a function to "inject" a value into a variant:
 
 class Inject (x :: Type) (xs :: [Type]) where
+  type Project xs :: [Type]
   inject :: x -> Variant xs
 
-instance Inject x (x ': xs) where
+instance {-# OVERLAPPING #-} Inject x (x ': xs) where
+  type Project (x ': xs) = xs
   inject = Here
 
-instance {-# OVERLAPPING #-} Inject x xs
-    => Inject x (y ': xs) where
+instance {-# INCOHERENT #-} Inject x xs => Inject x (y ': xs) where
+  type Project (y ': xs) = y ': Project xs
   inject = There . inject
 
 -- | Write a function to "project" a value /out of/ a variant. In other words,
