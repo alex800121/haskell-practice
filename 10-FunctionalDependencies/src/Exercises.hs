@@ -340,11 +340,9 @@ type family GetOutcome f i where
 class (Applicative f, f ~ GetApplicative o, o ~ GetOutcome f i) => Lift f i o where
   lift' :: f i -> o
 
--- instance (Applicative f, Lift f b o, o' ~ (f a -> o)) => Lift f (a -> b) o' where
 instance (Applicative f, Lift f b o, o' ~ (f a -> o)) => Lift f (a -> b) o' where
   lift' fs xs = lift' (fs <*> xs)
 
--- instance {-# INCOHERENT #-} (Applicative f, o ~ f a, GetApplicative (f a) ~ f, GetOutcome f a ~ f a) => Lift f a o where
 instance {-# INCOHERENT #-} (Applicative f, o ~ f a, GetApplicative (f a) ~ f, GetOutcome f a ~ f a) => Lift f a o where
   lift' = id
 

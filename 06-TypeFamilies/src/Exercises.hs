@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeFamilies  #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE PolyKinds #-}
 module Exercises where
 
 import Data.Kind (Constraint, Type)
@@ -220,3 +221,73 @@ instance (Every Eq xs, Every Ord xs) => Ord (HList xs) where
 -- | b. Write a type-level prime number sieve.
 
 -- | c. Why is this such hard work?
+
+type family Prime (n :: Nat) :: [Nat] where
+  Prime n = Sieve (Drop (S (S Z)) (NatList Z n))
+
+type family Drop (n :: Nat) (xs :: [k]) :: [k] where
+  Drop Z xs = xs
+  Drop _ '[] = '[]
+  Drop (S n) (x ': xs) = Drop n xs
+
+type family NatList (n :: Nat) (m :: Nat) :: [Nat] where
+  NatList n Z = '[n]
+  NatList n (S m) = n ': NatList ('S n) m
+
+type family Sieve (xs :: [Nat]) :: [Nat] where
+  Sieve '[] = '[]
+  Sieve (x ': xs) = x ': Sieve (Sieve' x xs)
+
+type family Sieve' (n :: Nat) (xs :: [Nat]) :: [Nat] where
+  Sieve' _ '[] = '[]
+  Sieve' n (x ': xs) = FilterDiv (DivZero n n x) n x xs
+
+type family FilterDiv (b :: Bool) (n :: Nat) (x :: Nat) (xs :: [Nat]) :: [Nat] where
+  FilterDiv 'True n _ xs = Sieve' n xs
+  FilterDiv 'False n x xs = x ': Sieve' n xs
+
+type family DivZero (n :: Nat) (n' :: Nat) (x :: Nat) :: Bool where
+  DivZero _ 'Z 'Z = 'True
+  DivZero _ ('S n) 'Z = 'False
+  DivZero n 'Z ('S x) = DivZero n n ('S x)
+  DivZero n ('S n') ('S x) = DivZero n n' x
+
+type N0  = 'Z
+type N1  = 'S N0
+type N2  = 'S N1
+type N3  = 'S N2
+type N4  = 'S N3
+type N5  = 'S N4
+type N6  = 'S N5
+type N7  = 'S N6
+type N8  = 'S N7
+type N9  = 'S N8
+type N10 = 'S N9
+type N11 = 'S N10
+type N12 = 'S N11
+type N13 = 'S N12
+type N14 = 'S N13
+type N15 = 'S N14
+type N16 = 'S N15
+type N17 = 'S N16
+type N18 = 'S N17
+type N19 = 'S N18
+type N20 = 'S N19
+type N21 = 'S N20
+type N22 = 'S N21
+type N23 = 'S N22
+type N24 = 'S N23
+type N25 = 'S N24
+type N26 = 'S N25
+type N27 = 'S N26
+type N28 = 'S N27
+type N29 = 'S N28
+type N30 = 'S N29
+type N31 = 'S N30
+
+-- Little test...
+data (x :: [Nat]) :~~: (y :: [Nat]) where
+  NRefl :: x :~~: x
+
+test :: Prime N31 :~~: '[ N2, N3, N5, N7, N11, N13, N17, N19, N23, N29, N31 ]
+test = NRefl
