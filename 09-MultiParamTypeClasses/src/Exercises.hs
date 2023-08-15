@@ -15,6 +15,7 @@ module Exercises where
 
 import Data.Kind (Constraint, Type)
 import Data.Map (Map)
+import qualified Data.Map as Map
 import Data.Proxy (Proxy (..))
 import GHC.TypeLits (TypeError, ErrorMessage(..))
 
@@ -409,15 +410,16 @@ test1 = doINeedACoat SSunny SCold
 
 -- | Let's imagine we have some types in our codebase:
 
-newtype UserId = UserId Int
+newtype UserId = UserId Int deriving (Eq, Ord, Show)
 
 data User
   = User
       { id      :: UserId
       , knownAs :: String
       }
+  deriving Show
 
-newtype CommentId = CommentId Int
+newtype CommentId = CommentId Int deriving (Eq, Ord, Show)
 
 data Comment
   = Comment
@@ -425,8 +427,10 @@ data Comment
       , author :: UserId
       , text   :: String
       }
+  deriving Show
 
 data Status = Blocked | Deleted
+  deriving Show
 
 -- | In order to better facilitate mobile devices, we now want to introduce
 -- caching. I start work, and eventually slide a pull request into your DMs:
@@ -445,12 +449,30 @@ class CommentCache where
 -- | a. What are those three ways? Could we turn them into parameters to a
 -- typeclass? Do it!
 
+class Cacheable content where
+  type Result content :: Type -> Type
+  type Id content :: Type
+  store :: content -> Map (Id content) content -> Map (Id content) content
+  load :: Map (Id content) content -> Id content -> (Result content) content
+
+instance Cacheable User where
+  type Result User = Either Status
+  type Id User = UserId
+  store u@(User i _) = Map.insert i u
+  load m = maybe (Left Deleted) Right . (m Map.!?)
+
+instance Cacheable Comment where
+  type Result Comment = Maybe
+  type Id Comment = CommentId
+  store c@(Comment i _ _) = Map.insert i c
+  load = (Map.!?)
+
 -- | b. Write instances for 'User' and 'Comment', and feel free to implement
 -- them as 'undefined' or 'error'. Now, before uncommenting the following, can
 -- you see what will go wrong? (If you don't see an error, try to call it in
 -- GHCi...)
 
--- oops cache = load cache (UserId (123 :: Int))
+oops cache = load cache (UserId (123 :: Int))
 
 -- | c. Do we know of a sneaky trick that would allow us to fix this? Possibly
 -- involving constraints? Try!
