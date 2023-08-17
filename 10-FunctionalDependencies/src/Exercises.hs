@@ -57,10 +57,10 @@ data Nat = Z | S Nat
 -- | When we did our chapter on @TypeFamilies@, we wrote an @Add@ family to add
 -- two type-level naturals together. If we do a side-by-side comparison of the
 -- equivalent "class-based" approach:
-class Add (x :: Nat) (y :: Nat) (z :: Nat) | x y -> z where
-  append :: Vec x a -> Vec y a -> Vec z a
 
-type family Add' (x :: Nat) (y :: Nat) :: Nat
+class Add (x :: Nat) (y :: Nat) (z :: Nat) | x y -> z
+instance Add Z y y
+instance Add x y z => Add (S x) y (S z)
 
 -- | We see here that there are parallels between classes and type families.
 -- Type families produce a result, not a constraint, though we could write
@@ -71,23 +71,6 @@ type family Add' (x :: Nat) (y :: Nat) :: Nat
 -- | a. Write the two required instances for the 'Add' class by
 -- pattern-matching on the first argument. Remember that instances can have
 -- constraints, and this is how we do recursion!
-instance Add 'Z y y where
-  append VNil ys = ys
-
-instance (Add x y z) => Add ('S x) y ('S z) where
-  append (VCons x xs) ys = VCons x (append xs ys)
-
-class Add'' (x :: Nat) (y :: Nat) where
-  type AddResult x y :: Nat
-  append' :: Vec x a -> Vec y a -> Vec (AddResult x y) a
-
-instance Add'' 'Z y where
-  type AddResult 'Z y = y
-  append' VNil ys = ys
-
-instance (Add'' x y) => Add'' ('S x) y where
-  type AddResult ('S x) y = 'S (AddResult x y)
-  append' (VCons x xs) ys = VCons x (append' xs ys)
 
 data Vec (n :: Nat) (a :: k) where
   VNil :: Vec 'Z a
@@ -218,6 +201,7 @@ data Variant (xs :: [Type]) where
   There :: Variant xs -> Variant (y ': xs)
 
 -- | We previously wrote a function to "inject" a value into a variant:
+
 type family Project x xs where
   Project x '[] = '[]
   Project x (x ': xs) = xs
@@ -269,11 +253,11 @@ class Update (n :: Nat) (x :: Type) (y :: Type) (xs :: [Type]) where
   type Updated n x y xs :: [Type]
   update :: SNat n -> (x -> y) -> HList xs -> HList (Updated n x y xs)
 
-instance (x ~ z) => Update 'Z x y (z ': xs) where
+instance x ~ z => Update 'Z x y (z ': xs) where
   type Updated 'Z x y (z ': xs) = y ': xs
   update _ f (HCons x xs) = HCons (f x) xs
 
-instance (Update n x y xs) => Update ('S n) x y (z ': xs) where
+instance Update n x y xs => Update ('S n) x y (z ': xs) where
   type Updated ('S n) x y (z ': xs) = z ': Updated n x y xs
   update (SS n) f (HCons z xs) = HCons z (update n f xs)
 
@@ -297,6 +281,14 @@ instance GNameOf (G.D1 ('G.MetaData name a b c) d) name
 
 -- | Write a function to get the names of the constructors of a type as a
 -- type-level list of symbols.
+
+class ConstructorNameOf (x :: Type) (names :: [Symbol]) | x -> names
+instance GConstructorNameOf (Rep x) names => ConstructorNameOf x names
+class GConstructorNameOf (rep :: Type -> Type) (names :: [Symbol]) | rep -> names
+instance GConstructorNameOf constructors names => GConstructorNameOf (G.D1 m constructors) names
+instance GConstructorNameOf xs names => GConstructorNameOf (G.C1 (G.MetaCons name a b) c G.:+: xs) (name ': names)
+instance GConstructorNameOf (G.C1 (G.MetaCons name a b) c) '[name]
+instance GConstructorNameOf G.V1 '[]
 
 {- TEN -}
 
@@ -330,7 +322,7 @@ instance GNameOf (G.D1 ('G.MetaData name a b c) d) name
 -- lift (++) :: Applicative f => f [a] -> f [a] -> f [a]
 
 type family GetApplicative (a :: Type) :: Type -> Type where
-  GetApplicative (f a -> o) = GetApplicative o
+  GetApplicative (f a -> o) = f
   GetApplicative (f a) = f
 
 type family GetOutcome f i where
