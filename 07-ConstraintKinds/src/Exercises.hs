@@ -3,10 +3,17 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
-module Exercises where -- ^ This is starting to look impressive, right?
+{-# LANGUAGE UndecidableInstances #-}
+
+module Exercises where
+
+-- \^ This is starting to look impressive, right?
 
 import Data.Kind (Constraint, Type)
 
@@ -15,15 +22,10 @@ import Data.Kind (Constraint, Type)
 -- just extending the set of things that we can use as constraints to include
 -- type parameters!
 
-
-
-
-
 {- ONE -}
 
 -- | Here's a super uninteresting list, which comes with an unfortunate
 -- restriction: everything in the list must have the same exact type.
-
 data List a = Nil | Cons a (List a)
 
 -- | We can generalise this data structure to a /constrained list/, in which we
@@ -32,15 +34,16 @@ data List a = Nil | Cons a (List a)
 
 -- | a. Do it! Think about the @Nil@ and @Cons@ cases separately; which
 -- constraints can the @Nil@ case satisfy?
-
 data ConstrainedList (c :: Type -> Constraint) where
-  -- IMPLEMENT ME
+  ConstrainedNil :: ConstrainedList c
+  ConstrainedCons :: (c x) => x -> ConstrainedList c -> ConstrainedList c
 
 -- | b. Using what we know about RankNTypes, write a function to fold a
 -- constrained list. Note that we'll need a folding function that works /for
 -- all/ types who implement some constraint @c@. Wink wink, nudge nudge.
-
--- foldConstrainedList :: ???
+foldConstrainedList :: (Monoid m) => (forall x. (c x) => x -> m) -> ConstrainedList c -> m
+foldConstrainedList _ ConstrainedNil = mempty
+foldConstrainedList f (ConstrainedCons x xs) = f x <> foldConstrainedList f xs
 
 -- | Often, I'll want to constrain a list by /multiple/ things. The problem is
 -- that I can't directly write multiple constraints into my type, because the
@@ -53,23 +56,18 @@ data ConstrainedList (c :: Type -> Constraint) where
 -- | c. Write this class instance so that we can have a constraint that
 -- combines `Monoid a` and `Show a`. What other extension did you need to
 -- enable? Why?
+class (Eq a, Ord a) => Constraints a
 
--- class ??? => Constraints a
--- instance ??? => Constraints a
+instance (Eq a, Ord a) => Constraints a
 
 -- | What can we now do with this constrained list that we couldn't before?
 -- There are two opportunities that should stand out!
 
-
-
-
-
 {- TWO -}
 
 -- | Recall our HList:
-
 data HList (xs :: [Type]) where
-  HNil  :: HList '[]
+  HNil :: HList '[]
   HCons :: x -> HList xs -> HList (x ': xs)
 
 -- | Ideally, we'd like to be able to fold over this list in some way, ideally
@@ -77,27 +75,37 @@ data HList (xs :: [Type]) where
 -- of some constraint. To do that, though, we'd need to know that everything in
 -- the list implemented a given constraint... if only we had a type family for
 -- this...
+type family All (c :: k -> Constraint) (xs :: [k]) :: Constraint where
+  All _ '[] = ()
+  All c (x ': xs) = (c x, All c xs)
 
 -- | a. Write this fold function. I won't give any hints to the definition, but
 -- we will probably need to call it like this:
+fold :: (All c xs, Monoid m) => TCProxy c -> (forall x. (c x) => x -> m) -> HList xs -> m
+fold _ _ HNil = mempty
+fold p f (HCons x xs) = f x <> fold p f xs
 
--- test :: ??? => HList xs -> String
--- test = fold (TCProxy :: TCProxy Show) show
+data TCProxy (c :: k -> Constraint) = TCProxy
+
+test :: (All Show xs) => HList xs -> String
+test = fold (TCProxy :: TCProxy Show) show
 
 -- | b. Why do we need the proxy to point out which constraint we're working
 -- with?  What does GHC not like if we remove it?
 
 -- | We typically define foldMap like this:
-
-foldMap :: Monoid m => (a -> m) -> [a] -> m
+foldMap :: (Monoid m) => (a -> m) -> [a] -> m
 foldMap f = foldr (\x acc -> f x <> acc) mempty
 
 -- | c. What constraint do we need in order to use our @(a -> m)@ function on
 -- an @HList@? You may need to look into the __equality constraint__ introduced
 -- by the @GADTs@ and @TypeFamilies@ extensions, written as @(~)@:
 
-    -- * This tells GHC that @a@ and @b@ are equivalent.
-f :: a ~ b => a -> b
+-- \* This tells GHC that @a@ and @b@ are equivalent.
+f :: (a ~ b) => a -> b
 f = id
 
 -- | Write @foldMap@ for @HList@!
+
+foldMapH :: (Monoid m, All ((~) a) xs) => (a -> m) -> HList xs -> m
+foldMapH = undefined

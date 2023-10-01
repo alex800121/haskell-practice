@@ -233,13 +233,17 @@ type family Sieve' (xs :: [Nat]) :: [Nat] where
 
 type family DropMod (m :: Nat) (xs :: [Nat]) :: [Nat] where
   DropMod _ '[] = '[]
-  DropMod m (x ': xs) = DropMod' m m x x (DropMod m xs)
+  DropMod m (x ': xs) = DropMod' (IsMod m m x) x (DropMod m xs)
 
-type family DropMod' (o :: Nat) (m :: Nat) (x :: Nat) (y :: Nat) (xs :: [Nat]) :: [Nat] where
-  DropMod' _ Z Z y xs = xs
-  DropMod' _ (S _) Z y xs = y ': xs
-  DropMod' o Z (S x) y xs = DropMod' o o (S x) y xs
-  DropMod' o (S m) (S x) y xs = DropMod' o m x y xs
+type family DropMod' (b :: Bool) (x :: Nat) (xs :: [Nat]) :: [Nat] where
+  DropMod' True x xs = xs
+  DropMod' False x xs = x ': xs
+
+type family IsMod (o :: Nat) (m :: Nat) (x :: Nat) :: Bool where
+  IsMod _ Z Z = True
+  IsMod _ (S _) Z = False
+  IsMod o Z (S x) = IsMod o o (S x)
+  IsMod o (S m) (S x) = IsMod o m x
 
 type family Drop (a :: Nat) (b :: [k]) :: [k] where
   Drop Z xs = xs
@@ -248,4 +252,68 @@ type family Drop (a :: Nat) (b :: [k]) :: [k] where
 
 data x :==: y where
   Dict :: x :==: x
+
+test :: Sieve S61 :==: '[S2, S3, S5, S7, S11, S13, S17, S19, S23, S29, S31, S37, S41, S43, S47, S53, S59, S61]
+test = Dict
+
+type S2 = S (S Z)
+type S3 = S S2
+type S4 = S S3
+type S5 = S S4
+type S6 = S S5
+type S7 = S S6
+type S8 = S S7
+type S9 = S S8
+type S10 = S S9
+type S11 = S S10
+type S12 = S S11
+type S13 = S S12
+type S14 = S S13
+type S15 = S S14
+type S16 = S S15
+type S17 = S S16
+type S18 = S S17
+type S19 = S S18
+type S20 = S S19
+type S21 = S S20
+type S22 = S S21
+type S23 = S S22
+type S24 = S S23
+type S25 = S S24
+type S26 = S S25
+type S27 = S S26
+type S28 = S S27
+type S29 = S S28
+type S30 = S S29
+type S31 = S S30
+type S32 = S S31
+type S33 = S S32
+type S34 = S S33
+type S35 = S S34
+type S36 = S S35
+type S37 = S S36
+type S38 = S S37
+type S39 = S S38
+type S40 = S S39
+type S41 = S S40
+type S42 = S S41
+type S43 = S S42
+type S44 = S S43
+type S45 = S S44
+type S46 = S S45
+type S47 = S S46
+type S48 = S S47
+type S49 = S S48
+type S50 = S S49
+type S51 = S S50
+type S52 = S S51
+type S53 = S S52
+type S54 = S S53
+type S55 = S S54
+type S56 = S S55
+type S57 = S S56
+type S58 = S S57
+type S59 = S S58
+type S60 = S S59
+type S61 = S S60
 -- | c. Why is this such hard work?
