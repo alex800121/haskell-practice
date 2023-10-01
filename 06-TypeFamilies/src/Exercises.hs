@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -101,21 +102,28 @@ type family Max (a :: Nat) (b :: Nat) :: Nat where
   Max (S a) (S b) = S (Max a b)
 
 -- | c. Write a family to get the maximum natural in a list.
-
-type family FMap (f :: a -> b) (fa :: g a) :: g b
-type instance FMap _ Nothing = Nothing
-type instance FMap f (Just x) = Just (f x)
-
 type family Maximum (xs :: [Nat]) :: Maybe Nat where
   Maximum '[] = Nothing
   Maximum '[x] = Just x
-  Maximum (x ': xs) = FMap Max (Maximum xs)
+  Maximum xs = Just (Maximum' xs)
+
+type family Maximum' (xs :: [Nat]) :: Nat where
+  Maximum' '[x] = x
+  Maximum' (x ': xs) = Max x (Maximum' xs)
 
 {- FIVE -}
 
 data Tree = Empty | Node Tree Nat Tree
 
 -- | Write a type family to insert a promoted 'Nat' into a promoted 'Tree'.
+type family Insert (x :: Nat) (t :: Tree) :: Tree where
+  Insert x Empty = Node Empty x Empty
+  Insert x (Node l c r) = Insert' (Compare x c) x l c r
+
+type family Insert' (o :: Ordering) (x :: Nat) (l :: Tree) (c :: Nat) (r :: Tree) where
+  Insert' LT x l c r = Node (Insert x l) c r
+  Insert' EQ x l c r = Node (Insert x l) c r
+  Insert' GT x l c r = Node l c (Insert x r)
 
 {- SIX -}
 
