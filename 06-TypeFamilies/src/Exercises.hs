@@ -1,10 +1,14 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE UndecidableSuperClasses #-}
 
 module Exercises where
 
@@ -128,6 +132,25 @@ type family Insert' (o :: Ordering) (x :: Nat) (l :: Tree) (c :: Nat) (r :: Tree
 {- SIX -}
 
 -- | Write a type family to /delete/ a promoted 'Nat' from a promoted 'Tree'.
+type family Delete (x :: Nat) (t :: Tree) :: Tree where
+  Delete _ Empty = Empty
+  Delete x (Node l c r) = Delete' (Compare x c) x l c r
+
+type family Delete' (o :: Ordering) (x :: Nat) (l :: Tree) (c :: Nat) (r :: Tree) :: Tree where
+  Delete' LT x l c r = Node (Delete x l) c r
+  Delete' GT x l c r = Node l c (Delete x r)
+  Delete' EQ _ Empty _ r = r
+  Delete' EQ _ (Node ll lc lr) _ r = Reconstruct (DeleteFindMax ll lc lr) r
+
+type family Reconstruct (l :: (Nat, Tree)) (r :: Tree) :: Tree where
+  Reconstruct '(x, l) r = Node l x r
+
+type family DeleteFindMax (l :: Tree) (c :: Nat) (r :: Tree) :: (Nat, Tree) where
+  DeleteFindMax l c Empty = '(c, l)
+  DeleteFindMax l c (Node rl rc rr) = Reconstruct' l c (DeleteFindMax rl rc rr)
+
+type family Reconstruct' (l :: Tree) (c :: Nat) (r :: (Nat, Tree)) :: (Nat, Tree) where
+  Reconstruct' l c '(x, r) = '(x, Node l c r)
 
 {- SEVEN -}
 
@@ -138,6 +161,13 @@ data HList (xs :: [Type]) where
   HCons :: x -> HList xs -> HList (x ': xs)
 
 -- | Write a function that appends two 'HList's.
+type family (xs :: [k]) ++ (ys :: [k]) :: [k] where
+  '[] ++ ys = ys
+  (x ': xs) ++ ys = x ': (xs ++ ys)
+
+appendHList :: HList xs -> HList ys -> HList (xs ++ ys)
+appendHList HNil ys = ys
+appendHList (HCons x xs) ys = HCons x $ appendHList xs ys
 
 {- EIGHT -}
 
@@ -156,20 +186,66 @@ type family CAppend (x :: Constraint) (y :: Constraint) :: Constraint where
 -- | a. Write a family that takes a constraint constructor, and a type-level
 -- list of types, and builds a constraint on all the types.
 type family Every (c :: Type -> Constraint) (x :: [Type]) :: Constraint where
+  Every _ '[] = ()
+  Every c (x ': xs) = (c x, Every c xs)
+
+class (Every c x) => EveryC c x
+
+instance (Every c x) => EveryC c x
 
 -- ...
 
 -- | b. Write a 'Show' instance for 'HList' that requires a 'Show' instance for
 -- every type in the list.
+instance (EveryC Show xs) => Show (HList xs) where
+  show HNil = "[]"
+  show (HCons x xs) = show x ++ ':' : show xs
 
 -- | c. Write an 'Eq' instance for 'HList'. Then, write an 'Ord' instance.
 -- Was this expected behaviour? Why did we need the constraints?
+instance (EveryC Eq xs) => Eq (HList xs) where
+  HNil == HNil = True
+  HCons x xs == HCons y ys = x == y && xs == ys
+
+instance (EveryC Ord xs, EveryC Eq xs) => Ord (HList xs) where
+  compare HNil HNil = EQ
+  compare (HCons x xs) (HCons y ys) = compare x y <> compare xs ys
 
 {- NINE -}
 
 -- | a. Write a type family to calculate all natural numbers up to a given
 -- input natural.
+type family Upto (n :: Nat) :: [Nat] where
+  Upto n = Upto' Z n
+
+type family Upto' (a :: Nat) (b :: Nat) :: [Nat] where
+  Upto' n n = '[n]
+  Upto' a n = a ': Upto' (S a) n
 
 -- | b. Write a type-level prime number sieve.
 
+type family Sieve (n :: Nat) :: [Nat] where
+  Sieve n = Sieve' (Drop (S (S Z)) (Upto n))
+
+type family Sieve' (xs :: [Nat]) :: [Nat] where
+  Sieve' '[] = '[]
+  Sieve' (x ': xs) = x ': Sieve' (DropMod x xs)
+
+type family DropMod (m :: Nat) (xs :: [Nat]) :: [Nat] where
+  DropMod _ '[] = '[]
+  DropMod m (x ': xs) = DropMod' m m x x (DropMod m xs)
+
+type family DropMod' (o :: Nat) (m :: Nat) (x :: Nat) (y :: Nat) (xs :: [Nat]) :: [Nat] where
+  DropMod' _ Z Z y xs = xs
+  DropMod' _ (S _) Z y xs = y ': xs
+  DropMod' o Z (S x) y xs = DropMod' o o (S x) y xs
+  DropMod' o (S m) (S x) y xs = DropMod' o m x y xs
+
+type family Drop (a :: Nat) (b :: [k]) :: [k] where
+  Drop Z xs = xs
+  Drop _ '[] = '[]
+  Drop (S n) (x ': xs) = Drop n xs
+
+data x :==: y where
+  Dict :: x :==: x
 -- | c. Why is this such hard work?
