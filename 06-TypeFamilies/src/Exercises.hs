@@ -88,10 +88,28 @@ type family Filter' (b :: Bool) (x :: k) (xs :: [k]) :: [k] where
 
 -- | a. Nat fun! Write a type-level 'compare' function using the promoted
 -- 'Ordering' type.
+type family Compare (a :: Nat) (b :: Nat) :: Ordering where
+  Compare Z Z = EQ
+  Compare (S _) Z = GT
+  Compare Z (S _) = LT
+  Compare (S a) (S b) = Compare a b
 
 -- | b. Write a 'Max' family to get the maximum of two natural numbers.
+type family Max (a :: Nat) (b :: Nat) :: Nat where
+  Max Z n = n
+  Max n Z = n
+  Max (S a) (S b) = S (Max a b)
 
 -- | c. Write a family to get the maximum natural in a list.
+
+type family FMap (f :: a -> b) (fa :: g a) :: g b
+type instance FMap _ Nothing = Nothing
+type instance FMap f (Just x) = Just (f x)
+
+type family Maximum (xs :: [Nat]) :: Maybe Nat where
+  Maximum '[] = Nothing
+  Maximum '[x] = Just x
+  Maximum (x ': xs) = FMap Max (Maximum xs)
 
 {- FIVE -}
 
