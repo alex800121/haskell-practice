@@ -2,11 +2,9 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -16,6 +14,7 @@ module Exercises where
 -- \^ This is starting to look impressive, right?
 
 import Data.Kind (Constraint, Type)
+import Data.Proxy (Proxy (..))
 
 -- | Just a quick one today - there really isn't much to cover when we talk
 -- about ConstraintKinds, as it's hopefully quite an intuitive extension: we're
@@ -106,6 +105,6 @@ f :: (a ~ b) => a -> b
 f = id
 
 -- | Write @foldMap@ for @HList@!
-
 foldMapH :: (Monoid m, All ((~) a) xs) => (a -> m) -> HList xs -> m
-foldMapH = undefined
+foldMapH _ HNil = mempty
+foldMapH f (HCons x xs) = f x <> foldMapH f xs
