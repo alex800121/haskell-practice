@@ -337,8 +337,9 @@ instance GNameOf (G.D1 ('G.MetaData name a b c) d) name
 type family LiftF f i where
   LiftF f (a -> b) = f a -> LiftF f b
   LiftF f b = f b
+
 type family DetermineF o :: Type -> Type where
-  DetermineF (f a -> b) = DetermineF b
+  DetermineF (f a -> b) = f
   DetermineF (f b) = f
 
 class (Applicative f, LiftF f i ~ o, DetermineF o ~ f) => Lift f i o where
@@ -347,7 +348,11 @@ class (Applicative f, LiftF f i ~ o, DetermineF o ~ f) => Lift f i o where
 instance (Applicative f, Lift f b o', (f a -> o') ~ o) => Lift f (a -> b) o where
   lift' f = lift' . (f <*>)
 
-instance (Applicative f, LiftF f b ~ f b, o ~ f b, LiftF f b ~ o, DetermineF o ~ f) => Lift f b (f b) where
+instance
+  {-# INCOHERENT #-}
+  (Applicative f, LiftF f b ~ o, o ~ f b, DetermineF o ~ f) =>
+  Lift f b o
+  where
   lift' = id
 
 lift :: (Applicative f, Lift f i o) => i -> o
