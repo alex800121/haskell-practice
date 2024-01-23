@@ -1,7 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
@@ -10,6 +11,7 @@ module Exercises where
 
 import Data.Function (on, (&))
 import Data.Kind (Constraint, Type)
+import GHC.TypeLits (ErrorMessage (..), TypeError)
 
 {- ONE -}
 
@@ -59,17 +61,38 @@ data Void -- No constructors!
 -- 'Cons' this time...
 data Nat = Z | S Nat
 
-data StringAndIntList (stringCount :: Nat) (intCount :: Nat) (totalCount :: Nat) where
-  SINil :: StringAndIntList Z Z Z
-  SCons :: String -> StringAndIntList s i t -> StringAndIntList (S s) i (S t)
-  ICons :: Int -> StringAndIntList s i t -> StringAndIntList s (S i) (S t)
+data StringAndIntList (stringCount :: Nat) (intCount :: Nat) where
+  SINil :: StringAndIntList Z Z
+  SCons :: String -> StringAndIntList s i -> StringAndIntList (S s) i
+  ICons :: Int -> StringAndIntList s i -> StringAndIntList s (S i)
 
 -- | b. Update it to keep track of the count of strings /and/ integers.
 
 -- | c. What would be the type of the 'head' function?
-head :: StringAndIntList s i (S t) -> Either String Int
+class CountOr (a :: Nat) (b :: Nat)
+
+instance CountOr (S a) b
+
+instance CountOr a (S b)
+
+head :: (CountOr s i) => StringAndIntList s i -> Either String Int
 head (SCons s _) = Left s
 head (ICons i _) = Right i
+
+a = Exercises.head (SCons "123" SINil)
+
+-- >>> a
+-- Left "123"
+
+b = Exercises.head (ICons 123 SINil)
+
+-- >>> b
+-- Right 123
+
+-- >>> c = Exercises.head SINil
+-- No instance for `CountOr 'Z 'Z' arising from a use of `head'
+-- In the expression: head SINil
+-- In an equation for `c': c = head SINil
 
 {- FOUR -}
 
@@ -127,6 +150,7 @@ take :: SNat n -> HList xs -> HList (Take n xs)
 take SZ xs = xs
 take _ HNil = HNil
 take (SS n) (HCons x xs) = HCons x (Exercises.take n xs)
+
 {- SIX -}
 
 -- | Here's a boring data type:
@@ -137,6 +161,7 @@ data BlogAction (privilege :: [Role]) where
   DeleteComment :: BlogAction '[Admin, Moderator]
 
 data Role = Admin | Moderator | User
+
 -- | a. Two of these actions, 'DeleteBlog' and 'DeleteComment', should be
 -- admin-only. Extend the 'BlogAction' type (perhaps with a GADT...) to
 -- express, at the type-level, whether the value is an admin-only operation.
@@ -145,9 +170,32 @@ data Role = Admin | Moderator | User
 
 -- | b. Write a 'BlogAction' list type that requires all its members to be
 -- the same "access level": "admin" or "non-admin".
+class HasRole (r :: Role) (rs :: [Role])
 
--- data BlogActionList (isSafe :: ???) where
---   ...
+instance {-# OVERLAPPING #-} HasRole r (r ': rs)
+
+instance (HasRole r rs) => HasRole r (s ': rs)
+
+instance (TypeError (Text "No type \"" :<>: ShowType r :<>: Text "\" in list")) => HasRole r '[]
+
+data ConstraintList (c :: k -> Constraint) where
+  CNil :: ConstraintList c
+  CCons :: (c x) => g x -> ConstraintList c -> ConstraintList c
+
+data BlogActionList (r :: Role) where
+  BlogActionList :: ConstraintList (HasRole r) -> BlogActionList r
+
+-- >>> :t BlogActionList $ CCons AddBlog $ CCons DeleteBlog CNil :: BlogActionList Admin
+-- BlogActionList $ CCons AddBlog $ CCons DeleteBlog CNil :: BlogActionList Admin :: BlogActionList 'Admin
+--
+-- No type "'Moderator" in list
+-- In the second argument of `($)', namely `CCons DeleteBlog CNil'
+-- In the second argument of `($)', namely
+--   `CCons AddBlog $ CCons DeleteBlog CNil'
+-- In the expression:
+--     BlogActionList $ CCons AddBlog $ CCons DeleteBlog CNil ::
+--       BlogActionList Moderator
+--       BlogActionList Moderator
 
 -- | c. Let's imagine that our requirements change, and 'DeleteComment' is now
 -- available to a third role: moderators. Could we use 'DataKinds' to introduce
@@ -177,7 +225,8 @@ data SNat (value :: Nat) where
 
 -- | b. Write a function that extracts a vector's length at the type level:
 length :: Vector n a -> SNat n
-length = error "Implement me!"
+length VNil = SZ
+length (VCons _ xs) = SS (Exercises.length xs)
 
 -- | c. Is 'Proxy' a singleton type?
 data Proxy a = Proxy
@@ -187,23 +236,24 @@ data Proxy a = Proxy
 -- | Let's imagine we're writing some Industry Haskell™, and we need to read
 -- and write to a file. To do this, we might write a data type to express our
 -- intentions:
-data Program result
-  = OpenFile (Program result)
-  | WriteFile String (Program result)
-  | ReadFile (String -> Program result)
-  | CloseFile (Program result)
-  | Exit result
+data Program (open :: Bool) result where
+  OpenFile :: Program 'True result -> Program 'False result
+  WriteFile :: String -> Program 'True result -> Program 'True result
+  ReadFile :: (String -> Program 'True result) -> Program 'True result
+  CloseFile :: Program 'False result -> Program 'True result
+  Exit :: result -> Program 'False result
 
 -- | We could then write a program like this to use our language:
-myApp :: Program Bool
+myApp :: Program 'False Bool
 myApp =
   OpenFile $
     WriteFile "HEY" $
-      ( ReadFile $ \contents ->
-          if contents == "WHAT"
-            then WriteFile "... bug?" $ Exit False
-            else CloseFile $ Exit True
-      )
+      ReadFile
+        ( \contents ->
+            if contents == "WHAT"
+              then WriteFile "... bug?" $ CloseFile $ Exit False
+              else CloseFile $ Exit True
+        )
 
 -- | ... but wait, there's a bug! If the contents of the file equal "WHAT", we
 -- forget to close the file! Ideally, we would like the compiler to help us: we
@@ -227,8 +277,12 @@ myApp =
 
 -- | EXTRA: write an interpreter for this program. Nothing to do with data
 -- kinds, but a nice little problem.
-interpret :: Program {- ??? -} a -> IO a
-interpret = error "Implement me?"
+interpret :: Program b a -> IO a
+interpret (OpenFile app) = putStrLn "Opening file" >> interpret app
+interpret (WriteFile s app) = putStrLn ("Writing " ++ s ++ " to file") >> interpret app
+interpret (ReadFile f) = putStr "Input: " >> getLine >>= interpret . f
+interpret (CloseFile app) = putStrLn "Closing file" >> interpret app
+interpret (Exit result) = putStrLn "Exiting" >> pure result
 
 {- NINE -}
 
@@ -243,12 +297,17 @@ data Vector (n :: Nat) (a :: Type) where
 
 -- | a. Implement this type! This might seem scary at first, but break it down
 -- into Z and S cases. That's all the hint you need :)
-data SmallerThan (limit :: Nat)
-
--- ...
+data SmallerThan (limit :: Nat) where
+  LTZ :: SmallerThan (S Z)
+  LTS :: SmallerThan n -> SmallerThan (S n)
 
 -- | b. Write the '(!!)' function:
 (!!) :: Vector n a -> SmallerThan n -> a
-(!!) = error "Implement me!"
+VCons x _ !! LTZ = x
+VCons _ xs !! LTS n = xs Exercises.!! n
 
 -- | c. Write a function that converts a @SmallerThan n@ into a 'Nat'.
+
+fromLT :: SmallerThan n -> Nat
+fromLT LTZ = Z
+fromLT (LTS n) = S (fromLT n)

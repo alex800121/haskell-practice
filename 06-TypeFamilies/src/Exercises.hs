@@ -1,7 +1,9 @@
-{-# LANGUAGE DataKinds     #-}
-{-# LANGUAGE GADTs         #-}
-{-# LANGUAGE TypeFamilies  #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
+
 module Exercises where
 
 import Data.Kind (Constraint, Type)
@@ -11,51 +13,49 @@ import Data.Kind (Constraint, Type)
 -- regular names as infix names with the backticks, as we would at the value
 -- level.
 
-
-
-
-
 {- ONE -}
 
 data Nat = Z | S Nat
 
 -- | a. Use the @TypeOperators@ extension to rewrite the 'Add' family with the
 -- name '+':
+type family (a :: Nat) + (b :: Nat) :: Nat where
+  Z + b = b
+  (S a) + b = S (a + b)
 
 -- | b. Write a type family '**' that multiplies two naturals using '(+)'. Which
 -- extension are you being told to enable? Why?
-
 data SNat (value :: Nat) where
   SZ :: SNat 'Z
   SS :: SNat n -> SNat ('S n)
 
 -- | c. Write a function to add two 'SNat' values.
-
-
-
-
+(+) :: SNat a -> SNat b -> SNat (a + b)
+SZ + b = b
+(SS a) + b = SS (a Exercises.+ b)
 
 {- TWO -}
 
 data Vector (count :: Nat) (a :: Type) where
-  VNil  :: Vector 'Z a
+  VNil :: Vector 'Z a
   VCons :: a -> Vector n a -> Vector ('S n) a
 
 -- | a. Write a function that appends two vectors together. What would the size
 -- of the result be?
-
--- append :: Vector m a -> Vector n a -> Vector ??? a
+append :: Vector m a -> Vector n a -> Vector (m + n) a
+append VNil ys = ys
+append (VCons x xs) ys = VCons x (append xs ys)
 
 -- | b. Write a 'flatMap' function that takes a @Vector n a@, and a function
 -- @a -> Vector m b@, and produces a list that is the concatenation of these
 -- results. This could end up being a deceptively big job.
+type family (a :: Nat) ** (b :: Nat) :: Nat where
+  Z ** b = Z
+  (S a) ** b = b + (a ** b)
 
--- flatMap :: Vector n a -> (a -> Vector m b) -> Vector ??? b
-flatMap = error "Implement me!"
-
-
-
-
+flatMap :: Vector n a -> (a -> Vector m b) -> Vector (n ** m) b
+flatMap VNil _ = VNil
+flatMap (VCons x xs) f = append (f x) (flatMap f xs)
 
 {- THREE -}
 
@@ -66,10 +66,6 @@ flatMap = error "Implement me!"
 -- | c. Write an 'All' function that returns @'True@ if all the values in a
 -- type-level list of boleans are @'True@.
 
-
-
-
-
 {- FOUR -}
 
 -- | a. Nat fun! Write a type-level 'compare' function using the promoted
@@ -79,42 +75,25 @@ flatMap = error "Implement me!"
 
 -- | c. Write a family to get the maximum natural in a list.
 
-
-
-
-
 {- FIVE -}
 
 data Tree = Empty | Node Tree Nat Tree
 
 -- | Write a type family to insert a promoted 'Nat' into a promoted 'Tree'.
 
-
-
-
-
 {- SIX -}
 
 -- | Write a type family to /delete/ a promoted 'Nat' from a promoted 'Tree'.
-
-
-
-
 
 {- SEVEN -}
 
 -- | With @TypeOperators@, we can use regular Haskell list syntax on the
 -- type-level, which I think is /much/ tidier than anything we could define.
-
 data HList (xs :: [Type]) where
-  HNil  :: HList '[]
+  HNil :: HList '[]
   HCons :: x -> HList xs -> HList (x ': xs)
 
 -- | Write a function that appends two 'HList's.
-
-
-
-
 
 {- EIGHT -}
 
@@ -127,25 +106,20 @@ data HList (xs :: [Type]) where
 -- - Unlike tuples, constraints are "auto-flattened": ((a, b), (c, (d, ())) is
 --   exactly equivalent to (a, b, c, d). Thanks to this property, we can build
 --   up constraints using type families!
-
 type family CAppend (x :: Constraint) (y :: Constraint) :: Constraint where
   CAppend x y = (x, y)
 
 -- | a. Write a family that takes a constraint constructor, and a type-level
 -- list of types, and builds a constraint on all the types.
-
 type family Every (c :: Type -> Constraint) (x :: [Type]) :: Constraint where
-  -- ...
+
+-- ...
 
 -- | b. Write a 'Show' instance for 'HList' that requires a 'Show' instance for
 -- every type in the list.
 
 -- | c. Write an 'Eq' instance for 'HList'. Then, write an 'Ord' instance.
 -- Was this expected behaviour? Why did we need the constraints?
-
-
-
-
 
 {- NINE -}
 
