@@ -211,8 +211,8 @@ instance (TypeError (Text "Out of bound")) => At n '[] Void where
 --   at
 --     (SS (SS (SS (SS SZ))))
 --     (HCons 123 (HCons "hello" (HCons True (HCons () HNil))))
--- In an equation for `it_ajjBY':
---     it_ajjBY
+-- In an equation for `it_a1wTl':
+--     it_a1wTl
 --       = at
 --           (SS (SS (SS (SS SZ))))
 --           (HCons 123 (HCons "hello" (HCons True (HCons () HNil))))
@@ -220,6 +220,15 @@ instance (TypeError (Text "Out of bound")) => At n '[] Void where
 -- | c. Write a custom type error!
 
 -- | d. Implement 'take' for the 'HList'.
+type family Take (n :: Nat) (xs :: [Type]) :: [Type] where
+  Take Z _ = '[]
+  Take _ '[] = '[]
+  Take (S n) (x ': xs) = x ': Take n xs
+
+htake :: SNat n -> HList xs -> HList (Take n xs)
+htake SZ _ = HNil
+htake _ HNil = HNil
+htake (SS n) (HCons x xs) = HCons x (htake n xs)
 
 {- SEVEN -}
 
@@ -287,8 +296,8 @@ instance (TypeError (Text "The type " :<>: ShowType x :<>: Text " is not in the 
 --   project
 --     (Proxy :: Proxy Double)
 --     (inject "Hello" :: Variant '[Int, String, Bool])
--- In an equation for `it_ajhLy':
---     it_ajhLy
+-- In an equation for `it_a1uwr':
+--     it_a1uwr
 --       = project
 --           (Proxy :: Proxy Double)
 --           (inject "Hello" :: Variant '[Int, String, Bool])
@@ -308,20 +317,57 @@ instance (TypeError (Text "The type " :<>: ShowType x :<>: Text " is not in the 
 type family UpdateH (n :: Nat) (x :: Type) (y :: Type) (xs :: [Type]) :: [Type] where
   UpdateH Z x y (x ': xs) = y ': xs
   UpdateH (S n) x y (z ': xs) = z ': UpdateH n x y xs
-  UpdateH n x y (z ': xs) = z ': xs
+  UpdateH Z x y (z ': xs) = z ': xs
   UpdateH n x y '[] = '[]
 
-class (UpdateH n x y xs ~ ys, At n xs x, At n ys y) => Update (n :: Nat) (x :: Type) (y :: Type) (xs :: [Type]) (ys :: [Type]) where
+class (UpdateH n x y xs ~ ys) => Update (n :: Nat) (x :: Type) (y :: Type) (xs :: [Type]) (ys :: [Type]) where
   update :: SNat n -> (x -> y) -> HList xs -> HList ys
 
 instance Update Z x y (x ': xs) (y ': xs) where
   update _ f (HCons x xs) = HCons (f x) xs
 
-instance (Update n x y xs ys) => Update (S n) x y (z ': xs) (z ': ys) where
+instance (Update n x y xs ys, At n xs x, At n ys y) => Update (S n) x y (z ': xs) (z ': ys) where
   update (SS n) f (HCons x xs) = HCons x (update n f xs)
+
+instance (TypeError (Text "Out of index")) => Update n x y '[] '[] where
+  update = error "unreachable"
+
+instance
+  {-# INCOHERENT #-}
+  ( UpdateH Z x y (z ': xs) ~ (z ': xs),
+    TypeError (Text "Mismatch types: " :<>: ShowType x :<>: Text " && " :<>: ShowType z)
+  ) =>
+  Update Z x y (z ': xs) (z ': xs)
+  where
+  update = error "unreachable"
 
 -- >>> update (SS SZ) length (HCons True (HCons "Hello" HNil))
 -- HCons True (HCons 5 HNil)
+
+-- >>> update SZ not (HCons True (HCons "Hello" HNil))
+-- HCons False (HCons "Hello" HNil)
+
+-- >>> update (SS (SS SZ)) not (HCons True (HCons "Hello" HNil))
+-- Out of index
+-- In the expression:
+--   update (SS (SS SZ)) not (HCons True (HCons "Hello" HNil))
+-- In an equation for `it_a1sg0':
+--     it_a1sg0
+--       = update (SS (SS SZ)) not (HCons True (HCons "Hello" HNil))
+
+-- >>> update (SS SZ) not (HCons True (HCons "Hello" HNil))
+-- Mismatch types: Bool && [Char]
+-- In the expression:
+--   update (SS SZ) not (HCons True (HCons "Hello" HNil))
+-- In an equation for `it_a1qCW':
+--     it_a1qCW = update (SS SZ) not (HCons True (HCons "Hello" HNil))
+
+-- >>> update SZ length (HCons True (HCons "Hello" HNil))
+-- Mismatch types: t0_a1p1X[tau:1] a0_a1p1Z[tau:1] && Bool
+-- In the expression:
+--   update SZ length (HCons True (HCons "Hello" HNil))
+-- In an equation for `it_a1oZY':
+--     it_a1oZY = update SZ length (HCons True (HCons "Hello" HNil))
 
 {- NINE -}
 
@@ -343,27 +389,49 @@ instance GNameOf (G.D1 ('G.MetaData name a b c) d) name
 
 -- | Write a function to get the names of the constructors of a type as a
 -- type-level list of symbols.
+class ConstructorNameOf (x :: Type) (names :: [Symbol]) | x -> names
+
+instance (GConstructorNameOf (Rep x) names) => ConstructorNameOf x names
+
+class GConstructorNameOf (rep :: Type -> Type) (names :: [Symbol]) | rep -> names
+
+instance (GConstructorNameOfH b names) => GConstructorNameOf (G.D1 a b) names
+
+class GConstructorNameOfH (b :: Type -> Type) (names :: [Symbol]) | b -> names
+
+instance (GConstructorNameOfH xs ns) => GConstructorNameOfH (G.C1 ('G.MetaCons n b c) d G.:+: xs) (n ': ns)
+
+instance GConstructorNameOfH (G.C1 ('G.MetaCons n b c) d) '[n]
+
+data Tree a = Leaf a | Branch (Tree a) (Tree a) deriving (Show, Generic)
+
+type family ConsName (x :: Type) :: [Symbol] where
+  ConsName x = GConsName (Rep x)
+
+type family GConsName (rep :: Type -> Type) :: [Symbol] where
+  GConsName (G.D1 m c) = GConsNameH c
+
+type family GConsNameH (c :: Type -> Type) :: [Symbol] where
+  GConsNameH (G.C1 ('G.MetaCons n b c) d G.:+: xs) = n ': GConsNameH xs
+  GConsNameH (G.C1 ('G.MetaCons n b c) d) = '[n]
 
 {- TEN -}
 
 -- | In the standard library, we have a series of @liftA*@ functions, such as
 -- 'liftA2', 'liftA3', 'liftA4'... wouldn't it be nice if we just had /one/
 -- function called 'lift' that generalised all these?
---
--- liftA1 :: Applicative f => (a -> b) -> f a -> f b
--- liftA1 = lift
---
--- liftA2 :: Applicative f => (a -> b -> c) -> f a -> f b -> f c
--- liftA2 = lift
---
---
--- liftA3 :: Applicative f => (a -> b -> c -> d) -> f a -> f b -> f c -> f d
--- liftA3 = lift
+liftA1 :: (Lift f b (f b), Applicative f) => (a -> b) -> f a -> f b
+liftA1 = lift
+
+liftA2 :: (Lift f c (f c), Applicative f) => (a -> b -> c) -> f a -> f b -> f c
+liftA2 = lift
+
+liftA3 :: (Lift f d (f d), Applicative f) => (a -> b -> c -> d) -> f a -> f b -> f c -> f d
+liftA3 = lift
 
 -- | Write this function, essentially generalising the f <$> a <*> b <*> c...
 -- pattern. It may help to see it as pure f <*> a <*> b <*> c..., and start
 -- with a function like this:
-
 lift :: (Applicative f, Lift f i o) => i -> o
 lift = lift' . pure
 
@@ -384,23 +452,31 @@ instance (o ~ CalcOut f b, Lift f b o) => Lift f (a -> b) (f a -> o) where
 instance (CalcF (f a) ~ f, CalcOut f a ~ f a) => Lift f a (f a) where
   lift' = id
 
+-- class Lift f i o | f i -> o, o -> f where
+--   lift' :: (Applicative f) => f i -> o
+--
+-- instance {-# OVERLAPS #-} (Lift f b o, o' ~ (f a -> o)) => Lift f (a -> b) o' where
+--   lift' fab fa = lift' (fab <*> fa)
+--
+-- instance (o ~ f a) => Lift f a o where
+--   lift' = id
+
 -- | @class Lift f i o ... where lift' :: ...@ is your job! If you get this
 -- right, perhaps with some careful use of @INCOHERENT@, equality constraints,
 -- and functional dependencies, you should be able to get some pretty amazing
 -- type inference:
---
+
+-- >>> lift Just (Just 123)
+-- Just (Just 123)
 -- >>> lift (++) (Just "123") Nothing
 -- Nothing
-
 -- >>> lift (++) (Just "123") (Just "234")
 -- Just "123234"
-
--- >>> lift (++) ["123", "456"] ["234", "567"]
--- ["123234","123567","456234","456567"]
-
 -- >>> lift (+ (2 :: Int)) [2, 4, 6]
 -- [4,6,8]
-
--- >>> lift Just [2 :: Int, 4, 6]
+-- >>> lift Just [2, 4, 6]
 -- [Just 2,Just 4,Just 6]
+--
+-- >>> lift (++) ["123", "456"] ["abc", "def"]
+-- ["123abc","123def","456abc","456def"]
 
