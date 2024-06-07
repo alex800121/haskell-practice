@@ -21,6 +21,8 @@ data IntegerMonoid = Sum | Product
 -- | a. Write a newtype around 'Integer' that lets us choose which instance we
 -- want.
 
+newtype NInt = NInt Integer
+
 -- | b. Write the two monoid instances for 'Integer'.
 
 -- | c. Why do we need @FlexibleInstances@ to do this?
