@@ -162,13 +162,14 @@ data SBool (value :: Bool) where
   STrue :: SBool 'True
 
 -- | a. Write a singleton type for natural numbers:
-data SNat (value :: Nat)
-
--- ...
+data SNat (value :: Nat) where
+  SZ :: SNat Z
+  SS :: SNat a -> SNat (S a)
 
 -- | b. Write a function that extracts a vector's length at the type level:
 length :: Vector n a -> SNat n
-length = error "Implement me!"
+length VNil = SZ
+length (VCons _ xs) = SS (Exercises.length xs)
 
 -- | c. Is 'Proxy' a singleton type?
 data Proxy a = Proxy
@@ -178,21 +179,28 @@ data Proxy a = Proxy
 -- | Let's imagine we're writing some Industry Haskell™, and we need to read
 -- and write to a file. To do this, we might write a data type to express our
 -- intentions:
-data Program result
-  = OpenFile (Program result)
-  | WriteFile String (Program result)
-  | ReadFile (String -> Program result)
-  | CloseFile (Program result)
-  | Exit result
+-- data Program result
+--   = OpenFile (Program result)
+--   | WriteFile String (Program result)
+--   | ReadFile (String -> Program result)
+--   | CloseFile (Program result)
+--   | Exit result
+data Program (fileOpen :: Bool) result where
+  OpenFile :: Program True result -> Program False result
+  WriteFile :: String -> Program True result -> Program True result
+  ReadFile :: (String -> Program True result) -> Program True result
+  CloseFile :: Program False result -> Program True result
+  Exit :: result -> Program False result
 
 -- | We could then write a program like this to use our language:
-myApp :: Program Bool
+myApp :: Program False Bool
 myApp =
   OpenFile $
-    WriteFile "HEY" $
+    WriteFile
+      "HEY"
       ( ReadFile $ \contents ->
           if contents == "WHAT"
-            then WriteFile "... bug?" $ Exit False
+            then WriteFile "... bug?" $ CloseFile $ Exit False
             else CloseFile $ Exit True
       )
 
@@ -218,9 +226,18 @@ myApp =
 
 -- | EXTRA: write an interpreter for this program. Nothing to do with data
 -- kinds, but a nice little problem.
-interpret :: Program {- ??? -} a -> IO a
-interpret = error "Implement me?"
+interpret :: Program b a -> IO a
+interpret (OpenFile p) = putStrLn "Opening file" >> interpret p
+interpret (WriteFile s p) = putStrLn ("Writing " ++ "\"" ++ s ++ "\" to file") >> interpret p
+interpret (ReadFile f) = putStr "Please input:" >> getLine >>= \s -> interpret (f s)
+interpret (CloseFile p) = putStrLn "Closing file" >> interpret p
+interpret (Exit result) = putStrLn "Exiting" >> return result
 
+-- OpenFile :: Program True result -> Program False result
+-- WriteFile :: String -> Program True result -> Program True result
+-- ReadFile :: (String -> Program True result) -> Program True result
+-- CloseFile :: Program False result -> Program True result
+-- Exit :: result -> Program False result
 {- NINE -}
 
 -- | Recall our vector type:
@@ -234,12 +251,16 @@ data Vector (n :: Nat) (a :: Type) where
 
 -- | a. Implement this type! This might seem scary at first, but break it down
 -- into Z and S cases. That's all the hint you need :)
-data SmallerThan (limit :: Nat)
-
--- ...
+data SmallerThan (limit :: Nat) where
+  STZ :: SmallerThan (S a)
+  STS :: SmallerThan a -> SmallerThan (S a)
 
 -- | b. Write the '(!!)' function:
 (!!) :: Vector n a -> SmallerThan n -> a
-(!!) = error "Implement me!"
+VCons x _ !! STZ = x
+VCons _ xs !! (STS s) = xs Exercises.!! s
 
 -- | c. Write a function that converts a @SmallerThan n@ into a 'Nat'.
+toNat :: SmallerThan a -> Nat
+toNat STZ = Z
+toNat (STS s) = S (toNat s)
