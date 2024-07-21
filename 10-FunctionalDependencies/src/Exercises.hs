@@ -254,8 +254,8 @@ type family ProjectF x xs where
 --   project
 --     (Proxy :: Proxy Double)
 --     (inject True :: Variant '[Int, Bool, String])
--- In an equation for `it_ae3iF':
---     it_ae3iF
+-- In an equation for `it_a6Yzd':
+--     it_a6Yzd
 --       = project
 --           (Proxy :: Proxy Double)
 --           (inject True :: Variant '[Int, Bool, String])
@@ -273,15 +273,15 @@ type family ProjectF x xs where
 -- | Write the type class required to implement this function, along with all
 -- its instances and functional dependencies.
 type family UpdateF n x y xs :: [Type] where
-  UpdateF Z x y (x ': xs) = y ': xs
+  UpdateF Z x y (z ': xs) = y ': xs
   UpdateF (S n) x y (z ': xs) = z ': UpdateF n x y xs
   UpdateF n x y '[] = '[]
-  -- UpdateF Z x y xs = xs
+  UpdateF Z x y xs = '[]
 
 class (UpdateF n x y xs ~ ys) => Update n x y xs ys where
   update :: SNat n -> (x -> y) -> HList xs -> HList ys
 
-instance (UpdateF Z x y (x ': xs) ~ (y ': xs)) => Update Z x y (x ': xs) (y ': xs) where
+instance (z ~ x) => Update Z x y (z ': xs) (y ': xs) where
   update _ f (HCons x xs) = HCons (f x) xs
 
 instance (Update n x y xs ys) => Update (S n) x y (z ': xs) (z ': ys) where
@@ -290,15 +290,27 @@ instance (Update n x y xs ys) => Update (S n) x y (z ': xs) (z ': ys) where
 instance (TypeError (Text "out of bound")) => Update n x y '[] '[] where
   update = error "unreachable"
 
--- instance
---   {-# INCOHERENT #-}
---   ( TypeError (Text "The type " :<>: ShowType x :<>: Text " is not in the given index"),
---     UpdateF Z x y xs ~ xs
---   ) =>
---   Update Z x y xs xs
---   where
---   update = error "unreachable"
+-- >>> :set -XTypeApplications
+-- >>> deriving instance (All Show xs) => Show (HList xs)
+-- >>> update (SS SZ) (+ 1) (HCons False (HCons 123 (HCons "hello" HNil)))
+-- >>> update (SS (SS SZ)) length (HCons False (HCons 123 (HCons "hello" HNil)))
+-- HCons False (HCons 124 (HCons "hello" HNil))
+-- HCons False (HCons 123 (HCons 5 HNil))
 
+-- >>> update (SS SZ) length (HCons False HNil)
+-- out of bound
+-- In the expression: update (SS SZ) length (HCons False HNil)
+-- In an equation for `it_a6X76':
+--     it_a6X76 = update (SS SZ) length (HCons False HNil)
+
+-- >>> update (SS SZ) length (HCons False (HCons 123 (HCons "hello" HNil)))
+-- No instance for `Num [a0_a6VUs[tau:1]]'
+--   arising from the literal `123'
+-- In the first argument of `HCons', namely `123'
+-- In the second argument of `HCons', namely
+--   `(HCons 123 (HCons "hello" HNil))'
+-- In the third argument of `update', namely
+--   `(HCons False (HCons 123 (HCons "hello" HNil)))'
 
 {- NINE -}
 
@@ -320,6 +332,25 @@ instance GNameOf (G.D1 ('G.MetaData name a b c) d) name
 
 -- | Write a function to get the names of the constructors of a type as a
 -- type-level list of symbols.
+type family ConsNameOf (x :: Type) :: [Symbol] where
+  ConsNameOf x = GConsNameOf (Rep x)
+
+type family GConsNameOf (rep :: Type -> Type) :: [Symbol] where
+  GConsNameOf (G.D1 _ cons) = GConsNameOfH cons
+
+type family GConsNameOfH (rep :: Type -> Type) :: [Symbol] where
+  GConsNameOfH (G.C1 (G.MetaCons n _ _) _ G.:+: cons) = n ': GConsNameOfH cons
+  GConsNameOfH (G.C1 (G.MetaCons n _ _) _) = '[n]
+
+-- >>> :kind! ConsNameOf (Either String Int)
+-- >>> :kind! ConsNameOf (Maybe Int)
+-- >>> :kind! ConsNameOf [String]
+-- ConsNameOf (Either String Int) :: [Symbol]
+-- = '["Left", "Right"]
+-- ConsNameOf (Maybe Int) :: [Symbol]
+-- = '["Nothing", "Just"]
+-- ConsNameOf [String] :: [Symbol]
+-- = '["[]", ":"]
 
 {- TEN -}
 
