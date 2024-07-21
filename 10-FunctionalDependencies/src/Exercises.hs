@@ -147,12 +147,43 @@ data SNat (n :: Nat) where
 
 -- | a. Write a function (probably in a class) that takes an 'SNat' and an
 -- 'HList', and returns the value at the 'SNat''s index within the 'HList'.
+type family AtF n xs where
+  AtF n '[] = Void
+  AtF Z (x ': xs) = x
+  AtF (S n) (x ': xs) = AtF n xs
+
+class (AtF n xs ~ x) => At (n :: Nat) (xs :: [Type]) (x :: Type) where
+  at :: SNat n -> HList xs -> x
 
 -- | b. Add the appropriate functional dependency.
+instance At Z (x ': xs) x where
+  at _ (HCons x _) = x
+
+instance (At n xs y) => At (S n) (x ': xs) y where
+  at (SS n) (HCons _ xs) = at n xs
+
+instance (TypeError (Text "Out of bound")) => At n '[] Void where
+  at = error "unreachable"
 
 -- | c. Write a custom type error!
 
 -- | d. Implement 'take' for the 'HList'.
+type family TakeF n xs :: [Type] where
+  TakeF Z xs = '[]
+  TakeF (S n) (x ': xs) = x ': TakeF n xs
+  TakeF (S n) '[] = '[]
+
+class (TakeF n xs ~ ys) => Take n xs ys where
+  take :: SNat n -> HList xs -> HList ys
+
+instance Take Z xs '[] where
+  take _ _ = HNil
+
+instance (Take n xs ys) => Take (S n) (x ': xs) (x ': ys) where
+  take (SS n) (HCons x xs) = HCons x (Exercises.take n xs)
+
+instance Take (S n) '[] '[] where
+  take _ _ = HNil
 
 {- SEVEN -}
 
@@ -160,8 +191,6 @@ data SNat (n :: Nat) where
 data Variant (xs :: [Type]) where
   Here :: x -> Variant (x ': xs)
   There :: Variant xs -> Variant (y ': xs)
-
-deriving instance (All Show xs) => Show (Variant xs)
 
 type family All c xs :: Constraint where
   All c '[] = ()
@@ -211,6 +240,7 @@ type family ProjectF x xs where
   ProjectF x (y ': xs) = y ': ProjectF x xs
   ProjectF x '[] = '[]
 
+-- >>> deriving instance (All Show xs) => Show (Variant xs)
 -- >>> project (Proxy :: Proxy Bool) (inject True :: Variant '[Int, Bool, String])
 -- >>> project (Proxy :: Proxy Int) (inject True :: Variant '[Int, Bool, String])
 -- >>> project (Proxy :: Proxy String) (inject True :: Variant '[Int, Bool, String])
@@ -224,8 +254,8 @@ type family ProjectF x xs where
 --   project
 --     (Proxy :: Proxy Double)
 --     (inject True :: Variant '[Int, Bool, String])
--- In an equation for `it_a6RcR':
---     it_a6RcR
+-- In an equation for `it_ae3iF':
+--     it_ae3iF
 --       = project
 --           (Proxy :: Proxy Double)
 --           (inject True :: Variant '[Int, Bool, String])
@@ -242,6 +272,33 @@ type family ProjectF x xs where
 
 -- | Write the type class required to implement this function, along with all
 -- its instances and functional dependencies.
+type family UpdateF n x y xs :: [Type] where
+  UpdateF Z x y (x ': xs) = y ': xs
+  UpdateF (S n) x y (z ': xs) = z ': UpdateF n x y xs
+  UpdateF n x y '[] = '[]
+  -- UpdateF Z x y xs = xs
+
+class (UpdateF n x y xs ~ ys) => Update n x y xs ys where
+  update :: SNat n -> (x -> y) -> HList xs -> HList ys
+
+instance (UpdateF Z x y (x ': xs) ~ (y ': xs)) => Update Z x y (x ': xs) (y ': xs) where
+  update _ f (HCons x xs) = HCons (f x) xs
+
+instance (Update n x y xs ys) => Update (S n) x y (z ': xs) (z ': ys) where
+  update (SS n) f (HCons x xs) = HCons x (update n f xs)
+
+instance (TypeError (Text "out of bound")) => Update n x y '[] '[] where
+  update = error "unreachable"
+
+-- instance
+--   {-# INCOHERENT #-}
+--   ( TypeError (Text "The type " :<>: ShowType x :<>: Text " is not in the given index"),
+--     UpdateF Z x y xs ~ xs
+--   ) =>
+--   Update Z x y xs xs
+--   where
+--   update = error "unreachable"
+
 
 {- NINE -}
 
@@ -285,6 +342,13 @@ instance GNameOf (G.D1 ('G.MetaData name a b c) d) name
 -- with a function like this:
 lift :: (Applicative f, Lift f i o) => i -> o
 lift = lift' . pure
+
+-- >>> lift (++) (Just [1, 2]) (Just [3, 4])
+-- >>> lift (+ (1 :: Int)) [1, 2, 3]
+-- >>> :t lift
+-- Just [1,2,3,4]
+-- [2,3,4]
+-- lift :: (Applicative f, Lift f i o) => i -> o
 
 type family LiftF f i where
   LiftF f (a -> b) = f a -> LiftF f b
