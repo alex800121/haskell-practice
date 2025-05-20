@@ -210,13 +210,17 @@ type family SieveHelper (xs :: [Nat]) :: [Nat] where
 
 type family Filter (x :: Nat) (xs :: [Nat]) :: [Nat] where
   Filter _ '[] = '[]
-  Filter x (y ': ys) = DropBy x x y y ys
+  Filter x (y ': ys) = DropBy (Mod x x y) y (Filter x ys)
 
-type family DropBy (o :: Nat) (x :: Nat) (y :: Nat) (oy :: Nat) (ys :: [Nat]) :: [Nat] where
-  DropBy o Z Z oy ys = Filter o ys
-  DropBy o Z (S y) oy ys = DropBy o o (S y) oy ys
-  DropBy o (S x) Z oy ys = oy ': Filter o ys
-  DropBy o (S x) (S y) oy ys = DropBy o x y oy ys
+type family Mod o x y :: Bool where
+  Mod o Z Z = True
+  Mod o (S x) Z = False
+  Mod o Z (S y) = Mod o o (S y)
+  Mod o (S x) (S y) = Mod o x y
+
+type family DropBy (b :: Bool) (oy :: Nat) (ys :: [Nat]) :: [Nat] where
+  DropBy True oy ys = ys
+  DropBy False oy ys = oy ': ys
 
 type family Drop (n :: Nat) (xs :: [k]) :: [k] where
   Drop Z xs = xs
@@ -226,55 +230,90 @@ type family Drop (n :: Nat) (xs :: [k]) :: [k] where
 data x :=: y where
   Refl :: x :=: x
 
-test :: [S2, S3, S5, S7, S11, S13, S17, S19] :=: Sieve S20
+test ::
+  [S2, S3, S5, S7, S11, S13, S17, S19, S23, S29, S31, S37, S41, S43, S47, S53, S59, S61, S67, S71, S73, S79]
+    :=: Sieve S80
 test = Refl
 
 type S1 = S Z
-
 type S2 = S S1
-
 type S3 = S S2
-
 type S4 = S S3
-
 type S5 = S S4
-
 type S6 = S S5
-
 type S7 = S S6
-
 type S8 = S S7
-
 type S9 = S S8
-
 type S10 = S S9
-
 type S11 = S S10
-
 type S12 = S S11
-
 type S13 = S S12
-
 type S14 = S S13
-
 type S15 = S S14
-
 type S16 = S S15
-
 type S17 = S S16
-
 type S18 = S S17
-
 type S19 = S S18
-
 type S20 = S S19
-
 type S21 = S S20
-
 type S22 = S S21
-
 type S23 = S S22
-
 type S24 = S S23
+type S25 = S S24
+type S26 = S S25
+type S27 = S S26
+type S28 = S S27
+type S29 = S S28
+type S30 = S S29
+type S31 = S S30
+type S32 = S S31
+type S33 = S S32
+type S34 = S S33
+type S35 = S S34
+type S36 = S S35
+type S37 = S S36
+type S38 = S S37
+type S39 = S S38
+type S40 = S S39
+type S41 = S S40
+type S42 = S S41
+type S43 = S S42
+type S44 = S S43
+type S45 = S S44
+type S46 = S S45
+type S47 = S S46
+type S48 = S S47
+type S49 = S S48
+type S50 = S S49
+type S51 = S S50
+type S52 = S S51
+type S53 = S S52
+type S54 = S S53
+type S55 = S S54
+type S56 = S S55
+type S57 = S S56
+type S58 = S S57
+type S59 = S S58
+type S60 = S S59
+type S61 = S S60
+type S62 = S S61
+type S63 = S S62
+type S64 = S S63
+type S65 = S S64
+type S66 = S S65
+type S67 = S S66
+type S68 = S S67
+type S69 = S S68
+type S70 = S S69
+type S71 = S S70
+type S72 = S S71
+type S73 = S S72
+type S74 = S S73
+type S75 = S S74
+type S76 = S S75
+type S77 = S S76
+type S78 = S S77
+type S79 = S S78
+type S80 = S S79
 
 -- | c. Why is this such hard work?
