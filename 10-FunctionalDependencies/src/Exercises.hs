@@ -8,6 +8,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 module Exercises where
 
@@ -171,8 +172,8 @@ instance (TypeError (Text "index out of bound")) => Index n Void '[] where
 -- index out of bound
 -- In the expression:
 --   index (HCons 123 (HCons True (HCons "123" HNil))) (SS (SS (SS SZ)))
--- In an equation for `it_a4wjQ':
---     it_a4wjQ
+-- In an equation for `it_aeYrc':
+--     it_aeYrc
 --       = index
 --           (HCons 123 (HCons True (HCons "123" HNil))) (SS (SS (SS SZ)))
 
@@ -263,8 +264,8 @@ test2 = inject "123" :: Variant [Bool, Int, String]
 -- >>> inject () :: Variant [Bool, Int, String]
 -- type not found
 -- In the expression: inject () :: Variant [Bool, Int, String]
--- In an equation for `it_a4ubc':
---     it_a4ubc = inject () :: Variant [Bool, Int, String]
+-- In an equation for `it_aeWl4':
+--     it_aeWl4 = inject () :: Variant [Bool, Int, String]
 
 type family ProjectF x xs where
   ProjectF x (x ': xs) = xs
@@ -286,6 +287,7 @@ instance (ProjectF x '[] ~ '[], TypeError (Text "type not found")) => Project x 
   project = error "unreachable"
 
 test5 = inject (Just 1 :: Maybe Int) :: Variant [Bool, Double, String, Maybe Int, ()]
+
 -- >>> :t project (Proxy :: Proxy Bool) test5
 -- >>> project (Proxy :: Proxy Bool) test5
 -- >>> :t project (Proxy :: Proxy Double) test5
@@ -310,8 +312,8 @@ test5 = inject (Just 1 :: Maybe Int) :: Variant [Bool, Double, String, Maybe Int
 -- >>> project (Proxy :: Proxy ()) test2
 -- type not found
 -- In the expression: project (Proxy :: Proxy ()) test2
--- In an equation for `it_a4qza':
---     it_a4qza = project (Proxy :: Proxy ()) test2
+-- In an equation for `it_aeUlG':
+--     it_aeUlG = project (Proxy :: Proxy ()) test2
 
 -- type not found
 -- In the expression: project (Proxy :: Proxy ()) test2
@@ -416,6 +418,7 @@ instance GListConstructorNameOf G.V1 '[]
 instance GListConstructorNameOf (G.C1 (G.MetaCons name b c) d) '[name]
 
 instance (GListConstructorNameOf x names) => GListConstructorNameOf (G.C1 (G.MetaCons name b c) d G.:+: x) (name ': names)
+
 -- ConstructorNameOfF (Either x y) :: [Symbol]
 -- = '["Left", "Right"]
 -- ConstructorNameOfF () :: [Symbol]
@@ -450,13 +453,14 @@ lift :: (Applicative f, Lift f i o) => i -> o
 lift = lift' . pure
 
 type family LiftF f i where
-  LiftF f (a -> b) = f a -> LiftF f b
+  LiftF f ((->) a b) = f a -> LiftF f b
   LiftF f a = f a
 
 type family CalcF o where
   CalcF (f i -> o) = CalcF o
   CalcF (f i) = f
 
+-- class (Applicative f) => Lift f i o | o -> f, f i -> o where
 class (Applicative f, LiftF f i ~ o, CalcF o ~ f) => Lift f i o where
   lift' :: f i -> o
 
@@ -466,6 +470,9 @@ instance
     CalcF (f i) ~ f
   ) =>
   Lift f i (f i)
+-- instance
+--   {-# INCOHERENT #-} (Applicative f, f i ~ o) =>
+--   Lift f i o
   where
   lift' = id
 
@@ -476,19 +483,21 @@ instance
     Applicative f
   ) =>
   Lift f (a -> b) (f a -> o')
+  -- (Applicative f, Lift f b o', (f a -> o') ~ o) => Lift f (a -> b) o
   where
   lift' fa = lift' . (fa <*>)
 
+-- >>> :t lift (++)
+-- >>> lift (++) [[2,3,4],[5,6]] [[7],[8,9,10],[11]]
 -- lift (++) :: (CalcF (f [a]) ~ f, Applicative f) => f [a] -> f [a] -> f [a]
--- Nothing
--- lift zipWith
---   :: (CalcF (f [c]) ~ f, Applicative f) =>
---      f (a -> b -> c) -> f [a] -> f [b] -> f [c]
--- [[6,8],[8,10],[8,10],[10,12],[5,12],[7,16],[15,24],[21,32]]
--- lift zipWith
---   :: (CalcF (f [c]) ~ f, Applicative f) =>
---      f (a -> b -> c) -> f [a] -> f [b] -> f [c]
--- [[6,8],[8,10],[8,10],[10,12],[5,12],[7,16],[15,24],[21,32]]
+-- [[2,3,4,7],[2,3,4,8,9,10],[2,3,4,11],[5,6,7],[5,6,8,9,10],[5,6,11]]
+
+-- >>> :t lift foldr
+-- >>> lift foldr [(+), (*), const] [1,2,3] [[4,5,6],[7,8]]
+-- lift foldr
+--   :: (Lift f b (LiftF f b), Foldable t) =>
+--      f (a -> b -> b) -> f b -> f (t a) -> LiftF f b
+-- [16,16,17,17,18,18,120,56,240,112,360,168,4,7,4,7,4,7]
 
 -- | @class Lift f i o ... where lift' :: ...@ is your job! If you get this
 -- right, perhaps with some careful use of @INCOHERENT@, equality constraints,
