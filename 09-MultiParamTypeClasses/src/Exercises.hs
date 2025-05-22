@@ -11,6 +11,7 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Exercises where
 
@@ -249,11 +250,12 @@ mystery = pluck (HCons (3 :: Int) HNil)
 -- | a. Write the 'Variant' type to make the above example compile.
 data Variant (xs :: [Type]) where
   Here :: x -> Variant xs
-  There :: Variant xs -> Variant ys
+  There :: Variant xs -> Variant (y ': xs)
 
-type family Every (c :: Type -> Constraint) (xs :: [Type]) :: Constraint where
-  Every _ '[] = ()
-  Every c (x ': xs) = (c x, Every c xs)
+-- class Every (c :: Type -> Constraint) (xs :: [Type]) where
+-- instance Every c '[]
+-- instance (Every c xs, c x) => Every c (x ': xs)
+
 
 -- | b. The example is /fine/, but there's a lot of 'Here'/'There' boilerplate.
 -- Wouldn't it be nice if we had a function that takes a type, and then returns
@@ -265,7 +267,7 @@ class Inject x xs where
 instance {-# OVERLAPPING #-} Inject x (x ': xs) where
   inject = Here
 
-instance {-# INCOHERENT #-} (Inject x xs) => Inject x (y ': xs) where
+instance (Inject x xs) => Inject x (y ': xs) where
   inject = There . inject
 
 -- | c. Why did we have to annotate the 3? This is getting frustrating... do
