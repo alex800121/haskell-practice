@@ -9,10 +9,8 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 module Exercises where
 
@@ -264,10 +262,10 @@ type family Every (c :: Type -> Constraint) (xs :: [Type]) :: Constraint where
 class Inject x xs where
   inject :: x -> Variant xs
 
-instance Inject x (x ': xs) where
+instance {-# OVERLAPPING #-} Inject x (x ': xs) where
   inject = Here
 
-instance {-# INCOHERENT #-} Inject x xs where
+instance {-# INCOHERENT #-} (Inject x xs) => Inject x (y ': xs) where
   inject = There . inject
 
 -- | c. Why did we have to annotate the 3? This is getting frustrating... do
