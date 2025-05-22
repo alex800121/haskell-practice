@@ -249,26 +249,49 @@ mystery = pluck (HCons (3 :: Int) HNil)
 
 -- | a. Write the 'Variant' type to make the above example compile.
 data Variant (xs :: [Type]) where
-  Here :: x -> Variant xs
+  Here :: x -> Variant (x ': xs)
   There :: Variant xs -> Variant (y ': xs)
-
--- class Every (c :: Type -> Constraint) (xs :: [Type]) where
--- instance Every c '[]
--- instance (Every c xs, c x) => Every c (x ': xs)
-
 
 -- | b. The example is /fine/, but there's a lot of 'Here'/'There' boilerplate.
 -- Wouldn't it be nice if we had a function that takes a type, and then returns
 -- you the value in the right position? Write it! If it works, the following
 -- should compile: @[inject True, inject (3 :: Int), inject "hello"]@.
-class Inject x xs where
+class (InjectF x xs Prelude.~ b) => Inject b x xs where
   inject :: x -> Variant xs
 
-instance {-# OVERLAPPING #-} Inject x (x ': xs) where
+type family InjectF x xs where
+  InjectF x (x ': xs) = True
+  InjectF x (y ': xs) = False
+  InjectF x '[] = False
+
+instance (Show x, Show (Variant xs)) => Show (Variant (x ': xs)) where
+  show (Here x) = "Here " ++ show x
+  show (There xs) = "There (" ++ show xs ++ ")"
+
+instance Show (Variant '[]) where
+  show _ = error "unreachable"
+
+instance (InjectF x (x ': xs) Prelude.~ True) => Inject True x (x ': xs) where
   inject = Here
 
-instance (Inject x xs) => Inject x (y ': xs) where
+instance (InjectF x (y ': xs) Prelude.~ False, Inject (InjectF x xs) x xs) => Inject False x (y ': xs) where
   inject = There . inject
+
+instance (TypeError (Text "Type not found")) => Inject False x '[] where
+  inject = error "unreachable"
+
+-- >>> inject True :: Variant [Bool, Int, String]
+-- >>> inject (3 :: Int) :: Variant [Bool, Int, String]
+-- >>> inject ("3" :: String) :: Variant [Bool, Int, String]
+-- Here True
+-- There (Here 3)
+-- There (There (Here "3"))
+
+-- >>> inject () :: Variant [Bool, Int, String]
+-- Type not found
+-- In the expression: inject () :: Variant [Bool, Int, String]
+-- In an equation for `it_aatJM':
+--     it_aatJM = inject () :: Variant [Bool, Int, String]
 
 -- | c. Why did we have to annotate the 3? This is getting frustrating... do
 -- you have any (not necessarily good) ideas on how we /could/ solve it?
@@ -304,16 +327,15 @@ class Coat (a :: Weather) (b :: Temperature) where
 -- that /everyone/ knows, so they should be safe enough!
 
 -- No one needs a coat when it's sunny!
-instance Coat Sunny b where doINeedACoat _ _ = False
+instance {-# INCOHERENT #-} Coat Sunny b where doINeedACoat _ _ = False
 
 -- It's freezing out there - put a coat on!
 instance Coat a Cold where doINeedACoat _ _ = True
 
 -- | Several months pass, and your app is used by billions of people around the
 -- world. All of a sudden, your engineers encounter a strange error:
-
--- test :: Bool
--- test = doINeedACoat SSunny SCold
+test :: Bool
+test = doINeedACoat SSunny SCold
 
 -- | Clearly, our data scientists never thought of a day that could
 -- simultaneously be sunny /and/ cold. After months of board meetings, a
@@ -386,13 +408,26 @@ class CommentCache where
 
 -- | a. What are those three ways? Could we turn them into parameters to a
 -- typeclass? Do it!
+class (result Prelude.~ Result content, contentId Prelude.~ Id content) => Cache content contentId result where
+  type Id content
+  type Result content :: Type -> Type
+  store :: content -> Map contentId content -> Map contentId content
+  load :: Map contentId content -> contentId -> result content
+
+instance Cache Comment CommentId Maybe where
+  type Id Comment = CommentId
+  type Result Comment = Maybe
+
+instance Cache User UserId (Either Status) where
+  type Id User = UserId
+  type Result User = Either Status
 
 -- | b. Write instances for 'User' and 'Comment', and feel free to implement
 -- them as 'undefined' or 'error'. Now, before uncommenting the following, can
 -- you see what will go wrong? (If you don't see an error, try to call it in
 -- GHCi...)
 
--- oops cache = load cache (UserId (123 :: Int))
+oops cache = load cache (UserId (123 :: Int))
 
 -- | c. Do we know of a sneaky trick that would allow us to fix this? Possibly
 -- involving constraints? Try!
